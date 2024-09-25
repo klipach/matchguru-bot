@@ -27,6 +27,7 @@ func init() {
 	fixDir()
 }
 
+// in GCP Functions, source code is placed in a directory named "serverless_function_source_code"
 func fixDir() {
 	fileInfo, err := os.Stat(gcloudFuncSourceDir)
 	if err == nil && fileInfo.IsDir() {
