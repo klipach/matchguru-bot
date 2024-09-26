@@ -42,6 +42,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	logger := initLogger(ctx)
 
 	logger.Println("bot function called")
+
 	if r.Method != http.MethodPost {
 		logger.Printf("invalid method: %s", r.Method)
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -116,6 +117,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	chatId := msg.ChatId
 	if len(firestoreUser.Chats) > chatId {
+		logger.Printf("chat found: %d", chatId)
 		for _, msg := range firestoreUser.Chats[chatId].Messages {
 			switch msg.From {
 			case fromUser:
@@ -132,12 +134,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 				logger.Printf("invalid message role: %s", msg.From)
 			}
 		}
+	} else {
+		logger.Printf("chat not found: %d", chatId)
 	}
 
 	completion, err := openaiClient.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
+			Model: openai.GPT4o,
 			Messages: append(
 				messages,
 				openai.ChatCompletionMessage{
