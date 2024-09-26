@@ -27,7 +27,8 @@ func init() {
 	fixDir()
 }
 
-// in GCP Functions, source code is placed in a directory named "serverless_function_source_code"
+// in GCP Functions, source code is placed in a directory named "serverless_function_source_code" 
+// need to change the dir to get access to template file
 func fixDir() {
 	fileInfo, err := os.Stat(gcloudFuncSourceDir)
 	if err == nil && fileInfo.IsDir() {
@@ -105,7 +106,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("error while executing systemPromptTemplate: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
-	logger.Printf("system prompt: %+v", result.String())
 
 	messages := []openai.ChatCompletionMessage{
 		{
@@ -114,8 +114,9 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if len(firestoreUser.Chats) > 0 {
-		for _, msg := range firestoreUser.Chats[0].Messages {
+	chatId := msg.ChatId
+	if len(firestoreUser.Chats) > chatId {
+		for _, msg := range firestoreUser.Chats[chatId].Messages {
 			switch msg.From {
 			case fromUser:
 				messages = append(messages, openai.ChatCompletionMessage{
