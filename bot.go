@@ -12,6 +12,7 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/logging"
+	firebase "firebase.google.com/go/v4"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -27,7 +28,7 @@ func init() {
 	fixDir()
 }
 
-// in GCP Functions, source code is placed in a directory named "serverless_function_source_code" 
+// in GCP Functions, source code is placed in a directory named "serverless_function_source_code"
 // need to change the dir to get access to template file
 func fixDir() {
 	fileInfo, err := os.Stat(gcloudFuncSourceDir)
@@ -42,6 +43,33 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	logger := initLogger(ctx)
 
 	logger.Println("bot function called")
+
+	app, err := firebase.NewApp(context.Background(), nil)
+	if err != nil {
+		logger.Printf("error initializing app: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	client, err := app.Auth(ctx)
+	if err != nil {
+		logger.Printf("error getting Auth client: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+
+	jwtToken, err := parseBearerToken(r)
+	if err != nil {
+		logger.Printf("error while getting bearer token: %v", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	token, err := client.VerifyIDToken(ctx, jwtToken)
+	if err != nil {
+		logger.Printf("error while verifying ID token: %v", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := token.UID
 
 	if r.Method != http.MethodPost {
 		logger.Printf("invalid method: %s", r.Method)
@@ -78,13 +106,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if msg.UserId == "" {
-		logger.Print("missing user_id")
-		http.Error(w, "Bad Request", http.StatusBadRequest)
-		return
-	}
-
-	user, err := firestoreClient.Collection("users").Doc(msg.UserId).Get(ctx)
+	user, err := firestoreClient.Collection("users").Doc(userID).Get(ctx)
 	if err != nil {
 		logger.Printf("error while getting user: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -115,10 +137,10 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	chatId := msg.ChatId
-	if len(firestoreUser.Chats) > chatId {
-		logger.Printf("chat found: %d", chatId)
-		for _, msg := range firestoreUser.Chats[chatId].Messages {
+	chatID := msg.ChatID
+	if len(firestoreUser.Chats) > chatID {
+		logger.Printf("chat found: %d", chatID)
+		for _, msg := range firestoreUser.Chats[chatID].Messages {
 			switch msg.From {
 			case fromUser:
 				messages = append(messages, openai.ChatCompletionMessage{
@@ -135,7 +157,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		logger.Printf("chat not found: %d", chatId)
+		logger.Printf("chat not found: %d", chatID)
 	}
 
 	completion, err := openaiClient.CreateChatCompletion(
