@@ -1,4 +1,4 @@
-package matchguru
+package auth
 
 import (
 	"net/http"

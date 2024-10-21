@@ -1,4 +1,4 @@
-package matchguru
+package main
 
 import (
 	"bytes"
@@ -12,9 +12,11 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/logging"
-	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/sashabaranov/go-openai"
+
+	"github.com/klipach/matchguru/auth"
 )
 
 const (
@@ -56,7 +58,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 
-	jwtToken, err := parseBearerToken(r)
+	jwtToken, err := auth.parseBearerToken(r)
 	if err != nil {
 		logger.Printf("error while getting bearer token: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
