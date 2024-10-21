@@ -1,0 +1,16 @@
+You are a bot that extracts the intent and entities from user queries about football.
+
+User query: "%s"
+
+Identify the intent and extract any entities (like player names or dates). Respond in JSON format with keys 'intent' and 'entities'.
+
+Possible intents:
+- GetPlayerTeam (requires 'player_name')
+- GetMatchScores (optional 'date')
+
+Examples:
+User query: "Where is Messi playing?"
+Response: {"intent": "GetPlayerTeam", "entities": {"player_name": "Messi"}}
+
+User query: "What were yesterday's scores?"
+Response: {"intent": "GetMatchScores", "entities": {"date": "yesterday"}}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"text/template"
+	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
@@ -126,7 +127,16 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	user.DataTo(&firestoreUser)
 
 	var result bytes.Buffer
-	err = systemPromptTemplate.Execute(&result, struct{ Username string }{Username: firestoreUser.DisplayName})
+	err = systemPromptTemplate.Execute(
+		&result,
+		struct {
+			Username string
+			Date     string
+		}{
+			Username: firestoreUser.DisplayName,
+			Date:     time.Now().Format("2006-01-02"),
+		},
+	)
 	if err != nil {
 		logger.Printf("error while executing systemPromptTemplate: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
