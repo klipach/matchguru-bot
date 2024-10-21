@@ -1,4 +1,4 @@
-package matchguru
+package main
 
 type MessageRequest struct {
 	Message string `json:"message"`
