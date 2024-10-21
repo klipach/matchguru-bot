@@ -86,7 +86,9 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	projectID, err := metadata.ProjectIDWithContext(ctx)
 	if err != nil {
-		logger.Fatalf("failed to get project ID: %v", err)
+		logger.Printf("failed to get project ID: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	firestoreClient, err := firestore.NewClient(ctx, projectID)
