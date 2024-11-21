@@ -1,6 +1,6 @@
 module github.com/klipach/matchguru
 
-go 1.22
+go 1.23
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
