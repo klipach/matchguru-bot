@@ -10,8 +10,11 @@ require (
 	cloud.google.com/go/logging v1.13.0
 	firebase.google.com/go/v4 v4.15.2
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.1
+	github.com/jmoiron/sqlx v1.4.0
+	github.com/lib/pq v1.10.9
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/russross/blackfriday/v2 v2.1.0
+	github.com/sashabaranov/go-openai v1.37.0
 	github.com/tmc/langchaingo v0.1.13
 )
 
