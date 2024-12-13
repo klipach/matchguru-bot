@@ -1,4 +1,4 @@
-package matchguru
+package contract
 
 type FirestoreUser struct {
 	Chats       []FirestoreChat `firestore:"chats"`

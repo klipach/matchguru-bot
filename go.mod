@@ -1,6 +1,8 @@
 module github.com/klipach/matchguru
 
-go 1.22
+go 1.22.0
+
+toolchain go1.23.4
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
@@ -9,6 +11,7 @@ require (
 	firebase.google.com/go/v4 v4.14.1
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.0
 	github.com/sashabaranov/go-openai v1.30.0
+	github.com/tmc/langchaingo v0.1.12
 )
 
 require (
@@ -20,6 +23,7 @@ require (
 	cloud.google.com/go/storage v1.43.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.15.2 // indirect
+	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -33,6 +37,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/pkoukk/tiktoken-go v0.1.6 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0 // indirect

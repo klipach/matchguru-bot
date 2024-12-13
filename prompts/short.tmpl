@@ -1,0 +1,10 @@
+Analyze the conversation. Determine if the most recent message requires external knowledge to answer.
+- If external knowledge is required, generate a concise prompt for an external LLM that specifies what information is needed.
+- If no external knowledge is needed, respond with "no".
+
+Today is: {{.Today}}
+
+{{ if .GameName }}
+You are discussing the soccer game "{{ .GameName }}," which is scheduled to kick off on {{ .GameStartingAt }}. 
+This match is part of the "{{ .GameLeague }}" league and takes place during the {{ .Season }} season.
+{{ end }}
