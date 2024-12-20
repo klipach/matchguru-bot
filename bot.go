@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"text/template"
 
 	"cloud.google.com/go/compute/metadata"
@@ -105,6 +106,24 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
 		logger.Printf("error while decoding request: %v", err)
 		http.Error(w, "Bad Request", http.StatusBadRequest)
+		return
+	}
+
+	// teste message:
+	if strings.TrimSpace(msg.Message) == "test" {
+		resp := MessageResponse{
+			Response: `<b> hi there</b>
+			<a href="/team/1">Team link</a>
+			<s>strikethrough</s>
+			<i>italic</i>
+			`,
+		}
+		err = json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			logger.Printf("error while encoding response: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 		return
 	}
 
