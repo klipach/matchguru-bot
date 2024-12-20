@@ -113,6 +113,25 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// teste message:
+	if strings.TrimSpace(msg.Message) == "test" {
+		resp := MessageResponse{
+			Response: `<b> hi there</b>
+			<a href="/team/503">Bayern</a>
+			<a href="/player/31000">Lewandowski</a>
+			<s>strikethrough</s>
+			<i>italic</i>
+			`,
+		}
+		err = json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			logger.Printf("error while encoding response: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		return
+	}
+
 	user, err := firestoreClient.Collection("users").Doc(userID).Get(ctx)
 	if err != nil {
 		logger.Printf("error while getting user: %v", err)
