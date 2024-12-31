@@ -1,4 +1,4 @@
-package matchguru
+package auth
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ var (
 	errInvalidAuthorizationHeader = errors.New("invalid Authorization header")
 )
 
-func parseBearerToken(r *http.Request) (string, error) {
+func BearerTokenFromRequest(r *http.Request) (string, error) {
 	reqToken := r.Header.Get(authorizationHeader)
 	if reqToken == "" {
 		return "", errMissingAuthorizationHeader

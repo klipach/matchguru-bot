@@ -1,4 +1,4 @@
-package matchguru
+package auth
 
 import (
 	"net/http"
@@ -52,8 +52,7 @@ func TestParseBearerToken(t *testing.T) {
 				},
 			}
 
-			token, err := parseBearerToken(req)
-
+			token, err := BearerTokenFromRequest(req)
 			if token != tt.expectedToken {
 				t.Errorf("expected token %q, got %q", tt.expectedToken, token)
 			}

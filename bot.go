@@ -1,20 +1,27 @@
 package matchguru
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"text/template"
+	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/logging"
 	firebase "firebase.google.com/go/v4"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
+	"github.com/klipach/matchguru/auth"
+	"github.com/klipach/matchguru/contract"
+	"github.com/klipach/matchguru/game"
 	openai "github.com/sashabaranov/go-openai"
+	"github.com/tmc/langchaingo/llms"
+	ppp "github.com/tmc/langchaingo/llms/openai"
 )
 
 const (
@@ -40,6 +47,7 @@ func fixDir() {
 func Bot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
+	perplexityApiKey := os.Getenv("PERPLEXITY_API_KEY")
 	logger := initLogger(ctx)
 
 	logger.Println("bot function called")
@@ -56,7 +64,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
 
-	jwtToken, err := parseBearerToken(r)
+	jwtToken, err := auth.BearerTokenFromRequest(r)
 	if err != nil {
 		logger.Printf("error while getting bearer token: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -77,9 +85,9 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	systemPromptTemplate, err := template.New("prompt.tmpl").ParseFiles("prompt.tmpl")
+	mainPrompt, err := template.New("main.tmpl").ParseFiles("prompts/main.tmpl")
 	if err != nil {
-		logger.Printf("error while parsing systemPromptTemplate: %v", err)
+		logger.Printf("error while parsing mainPrompt: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -102,10 +110,48 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	openaiClient := openai.NewClient(openaiAPIKey)
 
 	var msg MessageRequest
-	if err := json.NewDecoder(r.Body).Decode(&msg); err != nil {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.Printf("error while reading request body: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	logger.Printf("message: %v", string(data))
+
+	if err := json.Unmarshal(data, &msg); err != nil {
 		logger.Printf("error while decoding request: %v", err)
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
+	}
+
+	// test message:
+	if strings.TrimSpace(msg.Message) == "test" {
+		resp := MessageResponse{
+			Response: `<b> hi there</b>
+			<a href="/team/346">Team</a>
+			<a href="/player/4237">Player</a>
+			<a href="/league/384">League</a>
+			<a href="/fixture/19155228">Fixture</a>
+			<s>strikethrough</s>
+			<i>italic</i>
+			`,
+		}
+		err = json.NewEncoder(w).Encode(resp)
+		if err != nil {
+			logger.Printf("error while encoding response: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		return
+	}
+
+	gg := &game.Game{}
+	if msg.GameID != 0 {
+		gg, err = game.Fetch(ctx, msg.GameID)
+		if err != nil {
+			logger.Printf("error while fetching game: %v", err)
+		}
+		logger.Printf("game fetched %v+", gg)
 	}
 
 	user, err := firestoreClient.Collection("users").Doc(userID).Get(ctx)
@@ -122,23 +168,63 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	logger.Print("user found")
 
-	firestoreUser := FirestoreUser{}
+	firestoreUser := contract.FirestoreUser{}
 	user.DataTo(&firestoreUser)
 
-	var result bytes.Buffer
-	err = systemPromptTemplate.Execute(&result, struct{ Username string }{Username: firestoreUser.DisplayName})
+	var mainPromptStr strings.Builder
+	err = mainPrompt.Execute(
+		&mainPromptStr,
+		struct {
+			Username       string
+			Today          string
+			GameName       string
+			GameStartingAt time.Time
+			GameLeague     string
+			Season         string
+		}{
+			Username:       firestoreUser.DisplayName,
+			Today:          time.Now().Format("2006-01-02"),
+			GameName:       gg.Name,
+			GameStartingAt: gg.StartingAt,
+			GameLeague:     gg.League,
+			Season:         gg.Season,
+		})
 	if err != nil {
-		logger.Printf("error while executing systemPromptTemplate: %v", err)
+		logger.Printf("error while executing mainPrompt: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
-	messages := []openai.ChatCompletionMessage{
-		{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: result.String(),
-		},
+	shortPrompt, err := template.New("short.tmpl").ParseFiles("prompts/short.tmpl")
+	if err != nil {
+		logger.Printf("error while parsing shortPrompt: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	var shortPromptStr strings.Builder
+	err = shortPrompt.Execute(
+		&shortPromptStr,
+		struct {
+			Today          string
+			GameName       string
+			GameStartingAt time.Time
+			GameLeague     string
+			Season         string
+		}{
+			Today:          time.Now().Format("2006-01-02"),
+			GameName:       gg.Name,
+			GameStartingAt: gg.StartingAt,
+			GameLeague:     gg.League,
+			Season:         gg.Season,
+		})
+
+	if err != nil {
+		logger.Printf("error while executing shortPrompt: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
+	var messages []openai.ChatCompletionMessage
 	chatID := msg.ChatID
 	if len(firestoreUser.Chats) > chatID {
 		logger.Printf("chat found: %d", chatID)
@@ -161,17 +247,93 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.Printf("chat not found: %d", chatID)
 	}
+	messages = append(messages, openai.ChatCompletionMessage{
+		Role:    openai.ChatMessageRoleUser,
+		Content: msg.Message,
+	})
+	logger.Printf("messages: %v", messages)
+
+	shortResp, err := openaiClient.CreateChatCompletion(
+		ctx,
+		openai.ChatCompletionRequest{
+			Model: openai.GPT4Turbo,
+			Messages: append(
+				[]openai.ChatCompletionMessage{
+					{
+						Role:    openai.ChatMessageRoleSystem,
+						Content: shortPromptStr.String(),
+					},
+				},
+				messages...,
+			),
+		},
+	)
+
+	if err != nil {
+		logger.Printf("CreateChatCompletion short error: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	logger.Printf("short response: %s", shortResp.Choices[0].Message.Content)
+	if strings.ToLower(shortResp.Choices[0].Message.Content) != "no" {
+		logger.Printf("external knowledge required")
+		perplexityClient, err := ppp.New(
+			// Supported models: https://docs.perplexity.ai/docs/model-cards
+			ppp.WithModel("llama-3.1-sonar-small-128k-online"),
+			ppp.WithBaseURL("https://api.perplexity.ai"),
+			ppp.WithToken(perplexityApiKey),
+		)
+		if err != nil {
+			logger.Printf("error while creating perplexity client: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		perplexityPrompt, err := template.New("perplexity.tmpl").ParseFiles("prompts/perplexity.tmpl")
+		if err != nil {
+			logger.Printf("error while parsing perplexityPrompt: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		var perplexityPromptStr strings.Builder
+		err = perplexityPrompt.Execute(&perplexityPromptStr, struct{ Today string }{Today: time.Now().Format("2006-01-02")})
+		if err != nil {
+			logger.Printf("error while executing perplexityPrompt: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		perplexityResp, err := perplexityClient.GenerateContent(ctx,
+			[]llms.MessageContent{
+				llms.TextParts(llms.ChatMessageTypeSystem, perplexityPromptStr.String()),
+				llms.TextParts(llms.ChatMessageTypeHuman, shortResp.Choices[0].Message.Content),
+			},
+			llms.WithMaxTokens(1000),
+		)
+		if err != nil {
+			logger.Printf("error while generating from single prompt: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		logger.Printf("perplexity response: %s", perplexityResp.Choices[0].Content)
+
+		mainPromptStr.WriteString("Additional info for the request: " + perplexityResp.Choices[0].Content)
+	}
 
 	completion, err := openaiClient.CreateChatCompletion(
 		ctx,
 		openai.ChatCompletionRequest{
 			Model: openai.GPT4o,
 			Messages: append(
-				messages,
-				openai.ChatCompletionMessage{
-					Role:    openai.ChatMessageRoleUser,
-					Content: msg.Message,
+				[]openai.ChatCompletionMessage{
+					{
+						Role:    openai.ChatMessageRoleSystem,
+						Content: mainPromptStr.String(),
+					},
 				},
+				messages...,
 			),
 		},
 	)
