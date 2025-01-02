@@ -19,15 +19,19 @@ import (
 	"github.com/klipach/matchguru/auth"
 	"github.com/klipach/matchguru/contract"
 	"github.com/klipach/matchguru/game"
-	openai "github.com/sashabaranov/go-openai"
 	"github.com/tmc/langchaingo/llms"
-	ppp "github.com/tmc/langchaingo/llms/openai"
+	"github.com/tmc/langchaingo/llms/openai"
 )
 
 const (
 	fromUser            = "User"
 	fromAI              = "AI"
 	gcloudFuncSourceDir = "serverless_function_source_code"
+)
+
+var (
+	openaiAPIKey     = os.Getenv("OPENAI_API_KEY")
+	perplexityApiKey = os.Getenv("PERPLEXITY_API_KEY")
 )
 
 func init() {
@@ -46,8 +50,6 @@ func fixDir() {
 
 func Bot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	openaiAPIKey := os.Getenv("OPENAI_API_KEY")
-	perplexityApiKey := os.Getenv("PERPLEXITY_API_KEY")
 	logger := initLogger(ctx)
 
 	logger.Println("bot function called")
@@ -106,8 +108,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer firestoreClient.Close()
-
-	openaiClient := openai.NewClient(openaiAPIKey)
 
 	var msg MessageRequest
 	data, err := io.ReadAll(r.Body)
@@ -224,65 +224,51 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var messages []openai.ChatCompletionMessage
+	var messages []llms.MessageContent
 	chatID := msg.ChatID
 	if len(firestoreUser.Chats) > chatID {
 		logger.Printf("chat found: %d", chatID)
-		for _, msg := range firestoreUser.Chats[chatID].Messages {
-			switch msg.From {
+		for _, m := range firestoreUser.Chats[chatID].Messages {
+			switch m.From {
 			case fromUser:
-				messages = append(messages, openai.ChatCompletionMessage{
-					Role:    openai.ChatMessageRoleUser,
-					Content: msg.Message,
-				})
+				messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, m.Message))
 			case fromAI:
-				messages = append(messages, openai.ChatCompletionMessage{
-					Role:    openai.ChatMessageRoleAssistant,
-					Content: msg.Message,
-				})
+				messages = append(messages, llms.TextParts(llms.ChatMessageTypeAI, m.Message))
 			default:
-				logger.Printf("invalid message role: %s", msg.From)
+				logger.Printf("invalid message role: %s", m.From)
 			}
 		}
 	} else {
 		logger.Printf("chat not found: %d", chatID)
 	}
-	messages = append(messages, openai.ChatCompletionMessage{
-		Role:    openai.ChatMessageRoleUser,
-		Content: msg.Message,
-	})
+	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 	logger.Printf("messages: %v", messages)
 
-	shortResp, err := openaiClient.CreateChatCompletion(
-		ctx,
-		openai.ChatCompletionRequest{
-			Model: openai.GPT4Turbo,
-			Messages: append(
-				[]openai.ChatCompletionMessage{
-					{
-						Role:    openai.ChatMessageRoleSystem,
-						Content: shortPromptStr.String(),
-					},
-				},
-				messages...,
-			),
-		},
+	gpt4Turbo, err := openai.New(
+		openai.WithModel("gpt-4-turbo"),
+		openai.WithToken(openaiAPIKey),
 	)
+	if err != nil {
+		logger.Printf("error while creating gpt4Turbo: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 
+	shortResp, err := gpt4Turbo.GenerateContent(ctx, messages, llms.WithMaxTokens(1000))
 	if err != nil {
 		logger.Printf("CreateChatCompletion short error: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	logger.Printf("short response: %s", shortResp.Choices[0].Message.Content)
-	if strings.ToLower(shortResp.Choices[0].Message.Content) != "no" {
+	logger.Printf("short response: %s", shortResp.Choices[0].Content)
+	if strings.ToLower(shortResp.Choices[0].Content) != "no" {
 		logger.Printf("external knowledge required")
-		perplexityClient, err := ppp.New(
+		perplexityClient, err := openai.New(
 			// Supported models: https://docs.perplexity.ai/docs/model-cards
-			ppp.WithModel("llama-3.1-sonar-small-128k-online"),
-			ppp.WithBaseURL("https://api.perplexity.ai"),
-			ppp.WithToken(perplexityApiKey),
+			openai.WithModel("llama-3.1-sonar-small-128k-online"),
+			openai.WithBaseURL("https://api.perplexity.ai"),
+			openai.WithToken(perplexityApiKey),
 		)
 		if err != nil {
 			logger.Printf("error while creating perplexity client: %v", err)
@@ -308,7 +294,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		perplexityResp, err := perplexityClient.GenerateContent(ctx,
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, perplexityPromptStr.String()),
-				llms.TextParts(llms.ChatMessageTypeHuman, shortResp.Choices[0].Message.Content),
+				llms.TextParts(llms.ChatMessageTypeHuman, shortResp.Choices[0].Content),
 			},
 			llms.WithMaxTokens(1000),
 		)
@@ -322,20 +308,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		mainPromptStr.WriteString("Additional info for the request: " + perplexityResp.Choices[0].Content)
 	}
 
-	completion, err := openaiClient.CreateChatCompletion(
+	completion, err := gpt4Turbo.GenerateContent(
 		ctx,
-		openai.ChatCompletionRequest{
-			Model: openai.GPT4o,
-			Messages: append(
-				[]openai.ChatCompletionMessage{
-					{
-						Role:    openai.ChatMessageRoleSystem,
-						Content: mainPromptStr.String(),
-					},
-				},
-				messages...,
-			),
-		},
+		append(
+			[]llms.MessageContent{
+				llms.TextParts(llms.ChatMessageTypeSystem, mainPromptStr.String()),
+			},
+			messages...,
+		),
 	)
 
 	if err != nil {
@@ -344,7 +324,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := MessageResponse{
-		Response: completion.Choices[0].Message.Content,
+		Response: completion.Choices[0].Content,
 	}
 	err = json.NewEncoder(w).Encode(resp)
 	if err != nil {

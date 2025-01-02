@@ -10,7 +10,6 @@ require (
 	cloud.google.com/go/logging v1.11.0
 	firebase.google.com/go/v4 v4.14.1
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.0
-	github.com/sashabaranov/go-openai v1.30.0
 	github.com/tmc/langchaingo v0.1.12
 )
 
