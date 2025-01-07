@@ -14,7 +14,6 @@ import (
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
 	"cloud.google.com/go/logging"
-	firebase "firebase.google.com/go/v4"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"github.com/klipach/matchguru/auth"
 	"github.com/klipach/matchguru/contract"
@@ -54,31 +53,13 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	logger.Println("bot function called")
 
-	app, err := firebase.NewApp(context.Background(), nil)
+	token, err := auth.Authenticate(r)
 	if err != nil {
-		logger.Printf("error initializing app: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	client, err := app.Auth(ctx)
-	if err != nil {
-		logger.Printf("error getting Auth client: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-	}
-
-	jwtToken, err := auth.BearerTokenFromRequest(r)
-	if err != nil {
-		logger.Printf("error while getting bearer token: %v", err)
+		logger.Printf("error while authenticating: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	token, err := client.VerifyIDToken(ctx, jwtToken)
-	if err != nil {
-		logger.Printf("error while verifying ID token: %v", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
 	userID := token.UID
 
 	if r.Method != http.MethodPost {
