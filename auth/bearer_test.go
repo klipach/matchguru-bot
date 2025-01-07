@@ -52,7 +52,7 @@ func TestParseBearerToken(t *testing.T) {
 				},
 			}
 
-			token, err := BearerTokenFromRequest(req)
+			token, err := bearerTokenFromRequest(req)
 			if token != tt.expectedToken {
 				t.Errorf("expected token %q, got %q", tt.expectedToken, token)
 			}

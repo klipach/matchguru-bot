@@ -16,7 +16,7 @@ var (
 	errInvalidAuthorizationHeader = errors.New("invalid Authorization header")
 )
 
-func BearerTokenFromRequest(r *http.Request) (string, error) {
+func bearerTokenFromRequest(r *http.Request) (string, error) {
 	reqToken := r.Header.Get(authorizationHeader)
 	if reqToken == "" {
 		return "", errMissingAuthorizationHeader
