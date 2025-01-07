@@ -1,3 +1,4 @@
+.env.*
 .gcloudignore
 .git
 .gitignore
@@ -5,3 +6,4 @@
 firebase.json
 Makefile
 readme.md
+cmd

@@ -1,6 +1,9 @@
 PROJECT_ID=match-guru-0iqc9r
 FUNCTION_NAME=bot
 
+run:
+	go run cmd/main.go
+
 deploy:
 	gcloud functions deploy $(FUNCTION_NAME) \
 	--gen2 \

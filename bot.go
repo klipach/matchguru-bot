@@ -49,7 +49,7 @@ func fixDir() {
 
 func Bot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logger := initLogger(ctx)
+	logger := &log.Logger{}
 
 	logger.Println("bot function called")
 
@@ -75,12 +75,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID, err := metadata.ProjectIDWithContext(ctx)
-	if err != nil {
-		logger.Printf("failed to get project ID: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
+	projectID := "123"
+
+	// projectID, err := metadata.ProjectIDWithContext(ctx)
+	// if err != nil {
+	// 	logger.Printf("failed to get project ID: %v", err)
+	// 	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	// 	return
+	// }
 
 	firestoreClient, err := firestore.NewClient(ctx, projectID)
 	if err != nil {

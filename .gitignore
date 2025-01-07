@@ -1,2 +1,7 @@
 .DS_Store
 .vscode
+.idea
+.env*
+
+# But keep .env.example
+!.env.example
