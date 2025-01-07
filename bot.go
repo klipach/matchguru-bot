@@ -226,7 +226,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	var messages []llms.MessageContent
 	chatID := msg.ChatID
-	if len(firestoreUser.Chats) > chatID {
+	if _, ok := firestoreUser.Chats[chatID]; ok {
 		logger.Printf("chat found: %d", chatID)
 		for _, m := range firestoreUser.Chats[chatID].Messages {
 			switch m.From {

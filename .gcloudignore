@@ -2,6 +2,8 @@
 .git
 .gitignore
 .vscode
+.idea
+.github
 firebase.json
 Makefile
 readme.md

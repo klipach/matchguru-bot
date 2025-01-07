@@ -1,8 +1,8 @@
 package contract
 
 type FirestoreUser struct {
-	Chats       []FirestoreChat `firestore:"chats"`
-	DisplayName string          `firestore:"display_name"`
+	Chats       map[int]FirestoreChat `firestore:"chats"`
+	DisplayName string                `firestore:"display_name"`
 }
 
 type FirestoreChat struct {
