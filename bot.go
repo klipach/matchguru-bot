@@ -3,6 +3,7 @@ package matchguru
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	_ "time/tzdata"
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
@@ -53,20 +55,19 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	logger.Println("bot function called")
 
+	if r.Method != http.MethodPost {
+		logger.Printf("invalid method: %s", r.Method)
+		http.Error(w, "Method Not Implemented", http.StatusNotImplemented)
+		return
+	}
+
 	token, err := auth.Authenticate(r)
 	if err != nil {
 		logger.Printf("error while authenticating: %v", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
 	userID := token.UID
-
-	if r.Method != http.MethodPost {
-		logger.Printf("invalid method: %s", r.Method)
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	mainPrompt, err := template.New("main.tmpl").ParseFiles("prompts/main.tmpl")
 	if err != nil {
@@ -90,7 +91,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 	defer firestoreClient.Close()
 
-	var msg MessageRequest
+	var msg contract.BotRequest
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		logger.Printf("error while reading request body: %v", err)
@@ -107,7 +108,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	// test message:
 	if strings.TrimSpace(msg.Message) == "test" {
-		resp := MessageResponse{
+		resp := contract.BotResponse{
 			Response: `<b> hi there</b>
 			<a href="/team/346">Team</a>
 			<a href="/player/4237">Player</a>
@@ -125,6 +126,13 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	loc, err := time.LoadLocation(msg.Timezone)
+	if err != nil {
+		logger.Printf("error while loading location: %v", err)
+	}
+	today := time.Now().In(loc).Format("2006-01-02")
+	_, offset := time.Now().In(loc).Zone()
+	timeOffset := fmt.Sprintf("%+03d:%+02d", offset/3600, offset/60%60)
 
 	gg := &game.Game{}
 	if msg.GameID != 0 {
@@ -158,17 +166,21 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		struct {
 			Username       string
 			Today          string
+			TimeOffset     string
 			GameName       string
 			GameStartingAt time.Time
 			GameLeague     string
 			Season         string
+			Country        string
 		}{
 			Username:       firestoreUser.DisplayName,
-			Today:          time.Now().Format("2006-01-02"),
+			Today:          today,
+			TimeOffset:     timeOffset,
 			GameName:       gg.Name,
 			GameStartingAt: gg.StartingAt,
 			GameLeague:     gg.League,
 			Season:         gg.Season,
+			Country:        gg.League,
 		})
 	if err != nil {
 		logger.Printf("error while executing mainPrompt: %v", err)
@@ -187,12 +199,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		&shortPromptStr,
 		struct {
 			Today          string
+			TimeOffset     string
 			GameName       string
 			GameStartingAt time.Time
 			GameLeague     string
 			Season         string
 		}{
-			Today:          time.Now().Format("2006-01-02"),
+			Today:          today,
+			TimeOffset:     timeOffset,
 			GameName:       gg.Name,
 			GameStartingAt: gg.StartingAt,
 			GameLeague:     gg.League,
@@ -205,16 +219,16 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var messages []llms.MessageContent
+	var messageHistory []llms.MessageContent
 	chatID := msg.ChatID
 	if len(firestoreUser.Chats) > chatID {
 		logger.Printf("chat found: %d", chatID)
 		for _, m := range firestoreUser.Chats[chatID].Messages {
 			switch m.From {
 			case fromUser:
-				messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, m.Message))
+				messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeHuman, m.Message))
 			case fromAI:
-				messages = append(messages, llms.TextParts(llms.ChatMessageTypeAI, m.Message))
+				messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeAI, m.Message))
 			default:
 				logger.Printf("invalid message role: %s", m.From)
 			}
@@ -222,8 +236,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logger.Printf("chat not found: %d", chatID)
 	}
-	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
-	logger.Printf("messages: %v", messages)
+	messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
 	gpt4Turbo, err := openai.New(
 		openai.WithModel("gpt-4-turbo"),
@@ -235,7 +248,16 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortResp, err := gpt4Turbo.GenerateContent(ctx, messages, llms.WithMaxTokens(1000))
+	shortResp, err := gpt4Turbo.GenerateContent(
+		ctx,
+		append(
+			[]llms.MessageContent{
+				llms.TextParts(llms.ChatMessageTypeSystem, shortPromptStr.String()),
+			},
+			messageHistory...,
+		),
+		llms.WithMaxTokens(1000),
+	)
 	if err != nil {
 		logger.Printf("CreateChatCompletion short error: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -244,7 +266,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	logger.Printf("short response: %s", shortResp.Choices[0].Content)
 	if strings.ToLower(shortResp.Choices[0].Content) != "no" {
-		logger.Printf("external knowledge required")
+		logger.Printf("external knowledge required, perplexity request: %s", shortResp.Choices[0].Content)
 		perplexityClient, err := openai.New(
 			// Supported models: https://docs.perplexity.ai/docs/model-cards
 			openai.WithModel("llama-3.1-sonar-small-128k-online"),
@@ -265,7 +287,15 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var perplexityPromptStr strings.Builder
-		err = perplexityPrompt.Execute(&perplexityPromptStr, struct{ Today string }{Today: time.Now().Format("2006-01-02")})
+		err = perplexityPrompt.Execute(
+			&perplexityPromptStr,
+			struct {
+				Today      string
+				TimeOffset string
+			}{
+				Today:      time.Now().Format("2006-01-02"),
+				TimeOffset: timeOffset,
+			})
 		if err != nil {
 			logger.Printf("error while executing perplexityPrompt: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -295,7 +325,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, mainPromptStr.String()),
 			},
-			messages...,
+			messageHistory...,
 		),
 	)
 
@@ -304,10 +334,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	resp := MessageResponse{
-		Response: completion.Choices[0].Content,
-	}
-	err = json.NewEncoder(w).Encode(resp)
+	logger.Printf("response: %s", completion.Choices[0].Content)
+	response := process(completion.Choices[0].Content)
+	logger.Printf("processed response: %s", response)
+	err = json.NewEncoder(w).Encode(
+		contract.BotResponse{
+			Response: response,
+		},
+	)
 	if err != nil {
 		logger.Printf("error while encoding response: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
