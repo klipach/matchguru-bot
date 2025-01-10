@@ -26,7 +26,6 @@ const (
 )
 
 var (
-	openaiAPIKey     = os.Getenv("OPENAI_API_KEY")
 	perplexityApiKey = os.Getenv("PERPLEXITY_API_KEY")
 )
 
@@ -148,37 +147,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortPrompt, err := template.New("short.tmpl").ParseFiles("prompts/short.tmpl")
-	if err != nil {
-		logger.Printf("error while parsing shortPrompt: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	var shortPromptStr strings.Builder
-	err = shortPrompt.Execute(
-		&shortPromptStr,
-		struct {
-			Today          string
-			TimeOffset     string
-			GameName       string
-			GameStartingAt time.Time
-			GameLeague     string
-			Season         string
-		}{
-			Today:          today,
-			TimeOffset:     timeOffset,
-			GameName:       gg.Name,
-			GameStartingAt: gg.StartingAt,
-			GameLeague:     gg.League,
-			Season:         gg.Season,
-		})
-
-	if err != nil {
-		logger.Printf("error while executing shortPrompt: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
 	chatHistory, err := chat.LoadChatHistory(ctx, token.UID, msg.ChatID)
 	if err != nil {
 		logger.Printf("error while loading chat history: %v", err)
@@ -188,103 +156,35 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	chatHistory = append(chatHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
-	gpt4Turbo, err := openai.New(
-		openai.WithModel("gpt-4-turbo"),
-		openai.WithToken(openaiAPIKey),
+	perplexityClient, err := openai.New(
+		// Supported models: https://docs.perplexity.ai/docs/model-cards
+		openai.WithModel("llama-3.1-sonar-huge-128k-online"),
+		openai.WithBaseURL("https://api.perplexity.ai"),
+		openai.WithToken(perplexityApiKey),
 	)
 	if err != nil {
-		logger.Printf("error while creating gpt4Turbo: %v", err)
+		logger.Printf("error while creating perplexity client: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	shortResp, err := gpt4Turbo.GenerateContent(
-		ctx,
-		append(
-			[]llms.MessageContent{
-				llms.TextParts(llms.ChatMessageTypeSystem, shortPromptStr.String()),
-			},
-			chatHistory...,
-		),
-		llms.WithMaxTokens(1000),
-	)
-	if err != nil {
-		logger.Printf("CreateChatCompletion short error: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	logger.Printf("short response: %s", shortResp.Choices[0].Content)
-	if strings.ToLower(shortResp.Choices[0].Content) != "no" {
-		logger.Printf("external knowledge required, perplexity request: %s", shortResp.Choices[0].Content)
-		perplexityClient, err := openai.New(
-			// Supported models: https://docs.perplexity.ai/docs/model-cards
-			openai.WithModel("llama-3.1-sonar-small-128k-online"),
-			openai.WithBaseURL("https://api.perplexity.ai"),
-			openai.WithToken(perplexityApiKey),
-		)
-		if err != nil {
-			logger.Printf("error while creating perplexity client: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		perplexityPrompt, err := template.New("perplexity.tmpl").ParseFiles("prompts/perplexity.tmpl")
-		if err != nil {
-			logger.Printf("error while parsing perplexityPrompt: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		var perplexityPromptStr strings.Builder
-		err = perplexityPrompt.Execute(
-			&perplexityPromptStr,
-			struct {
-				Today      string
-				TimeOffset string
-			}{
-				Today:      time.Now().Format("2006-01-02"),
-				TimeOffset: timeOffset,
-			})
-		if err != nil {
-			logger.Printf("error while executing perplexityPrompt: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		perplexityResp, err := perplexityClient.GenerateContent(ctx,
-			[]llms.MessageContent{
-				llms.TextParts(llms.ChatMessageTypeSystem, perplexityPromptStr.String()),
-				llms.TextParts(llms.ChatMessageTypeHuman, shortResp.Choices[0].Content),
-			},
-			llms.WithMaxTokens(1000),
-		)
-		if err != nil {
-			logger.Printf("error while generating from single prompt: %v", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		logger.Printf("perplexity response: %s", perplexityResp.Choices[0].Content)
-
-		mainPromptStr.WriteString("Additional info for the request: " + perplexityResp.Choices[0].Content)
-	}
-
-	completion, err := gpt4Turbo.GenerateContent(
-		ctx,
+	completion, err := perplexityClient.GenerateContent(ctx,
 		append(
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, mainPromptStr.String()),
 			},
 			chatHistory...,
 		),
+		llms.WithTemperature(0.8),
+		llms.WithMaxTokens(1000),
 	)
-
 	if err != nil {
-		logger.Printf("ChatCompletion error: %v", err)
+		logger.Printf("error while generating from single prompt: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	logger.Printf("response: %s", completion.Choices[0].Content)
+	logger.Printf("perplexity response: %s", completion.Choices[0].Content)
+
 	response := process(completion.Choices[0].Content)
 	logger.Printf("processed response: %s", response)
 	err = json.NewEncoder(w).Encode(
