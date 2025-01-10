@@ -13,6 +13,7 @@ var (
 func process(text string) string {
 	leagues := map[string]int{
 		"Premier League England":           609,
+		"English Premier League":           609,
 		"EFL Championship England":         9,
 		"FA Cup":                           24,
 		"Carabao Cup":                      27,

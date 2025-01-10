@@ -189,7 +189,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	chatHistory = append(chatHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
 	gpt4Turbo, err := openai.New(
-		openai.WithModel("gpt-4-turbo"),
+		openai.WithModel("gpt-4o"),
 		openai.WithToken(openaiAPIKey),
 	)
 	if err != nil {
