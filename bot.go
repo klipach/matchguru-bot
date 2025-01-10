@@ -1,11 +1,9 @@
 package matchguru
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -13,20 +11,17 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"cloud.google.com/go/compute/metadata"
-	"cloud.google.com/go/firestore"
-	"cloud.google.com/go/logging"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"github.com/klipach/matchguru/auth"
+	"github.com/klipach/matchguru/chat"
 	"github.com/klipach/matchguru/contract"
 	"github.com/klipach/matchguru/game"
+	"github.com/klipach/matchguru/logger"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
 const (
-	fromUser            = "User"
-	fromAI              = "AI"
 	gcloudFuncSourceDir = "serverless_function_source_code"
 )
 
@@ -51,7 +46,7 @@ func fixDir() {
 
 func Bot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logger := initLogger(ctx)
+	logger := logger.FromContext(ctx)
 
 	logger.Println("bot function called")
 
@@ -67,7 +62,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	userID := token.UID
 
 	mainPrompt, err := template.New("main.tmpl").ParseFiles("prompts/main.tmpl")
 	if err != nil {
@@ -75,21 +69,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-
-	projectID, err := metadata.ProjectIDWithContext(ctx)
-	if err != nil {
-		logger.Printf("failed to get project ID: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	firestoreClient, err := firestore.NewClient(ctx, projectID)
-	if err != nil {
-		logger.Printf("failed to initiate firestore client: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	defer firestoreClient.Close()
 
 	var msg contract.BotRequest
 	data, err := io.ReadAll(r.Body)
@@ -143,28 +122,10 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		logger.Printf("game fetched %v+", gg)
 	}
 
-	user, err := firestoreClient.Collection("users").Doc(userID).Get(ctx)
-	if err != nil {
-		logger.Printf("error while getting user: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	if !user.Exists() {
-		logger.Print("user not found")
-		http.Error(w, "Not Found", http.StatusNotFound)
-		return
-	}
-
-	logger.Print("user found")
-
-	firestoreUser := contract.FirestoreUser{}
-	user.DataTo(&firestoreUser)
-
 	var mainPromptStr strings.Builder
 	err = mainPrompt.Execute(
 		&mainPromptStr,
 		struct {
-			Username       string
 			Today          string
 			TimeOffset     string
 			GameName       string
@@ -173,7 +134,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			Season         string
 			Country        string
 		}{
-			Username:       firestoreUser.DisplayName,
 			Today:          today,
 			TimeOffset:     timeOffset,
 			GameName:       gg.Name,
@@ -219,24 +179,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var messageHistory []llms.MessageContent
-	chatID := msg.ChatID
-	if len(firestoreUser.Chats) > chatID {
-		logger.Printf("chat found: %d", chatID)
-		for _, m := range firestoreUser.Chats[chatID].Messages {
-			switch m.From {
-			case fromUser:
-				messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeHuman, m.Message))
-			case fromAI:
-				messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeAI, m.Message))
-			default:
-				logger.Printf("invalid message role: %s", m.From)
-			}
-		}
-	} else {
-		logger.Printf("chat not found: %d", chatID)
+	chatHistory, err := chat.LoadChatHistory(ctx, token.UID, msg.ChatID)
+	if err != nil {
+		logger.Printf("error while loading chat history: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
-	messageHistory = append(messageHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
+
+	chatHistory = append(chatHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
 	gpt4Turbo, err := openai.New(
 		openai.WithModel("gpt-4-turbo"),
@@ -254,7 +204,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, shortPromptStr.String()),
 			},
-			messageHistory...,
+			chatHistory...,
 		),
 		llms.WithMaxTokens(1000),
 	)
@@ -325,7 +275,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, mainPromptStr.String()),
 			},
-			messageHistory...,
+			chatHistory...,
 		),
 	)
 
@@ -347,16 +297,4 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-}
-
-func initLogger(ctx context.Context) *log.Logger {
-	projectID, err := metadata.ProjectIDWithContext(ctx)
-	if err != nil {
-		log.Fatalf("failed to get project ID: %v", err)
-	}
-	client, err := logging.NewClient(ctx, projectID)
-	if err != nil {
-		log.Fatalf("failed to create logging client: %v", err)
-	}
-	return client.Logger("bot").StandardLogger(logging.Info)
 }
