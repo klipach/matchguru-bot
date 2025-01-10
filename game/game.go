@@ -43,7 +43,7 @@ func Fetch(ctx context.Context, gameID int) (*Game, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		sportmonksBaseURL+fmt.Sprintf("/v3/football/fixtures/%d/?include=league:name,image_path;season:name;round:name;participants.country:name,image_path;scores;venue;lineups.player;statistics;referees.referee;state", gameID),
+		sportmonksBaseURL+fmt.Sprintf("/v3/football/fixtures/%d/?include=league:name,image_path;season:name;round:name;participants.country:name;scores;venue;lineups.player;statistics;referees.referee;state", gameID),
 		http.NoBody,
 	)
 	if err != nil {
