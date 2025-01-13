@@ -10,6 +10,8 @@ require (
 	cloud.google.com/go/logging v1.13.0
 	firebase.google.com/go/v4 v4.15.1
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.1
+	github.com/microcosm-cc/bluemonday v1.0.26
+	github.com/russross/blackfriday/v2 v2.1.0
 	github.com/tmc/langchaingo v0.1.12
 )
 
@@ -21,6 +23,7 @@ require (
 	cloud.google.com/go/longrunning v0.6.4 // indirect
 	cloud.google.com/go/storage v1.43.0 // indirect
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.15.2 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -33,6 +36,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
+	github.com/gorilla/css v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
