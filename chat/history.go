@@ -18,7 +18,7 @@ const (
 
 type firestoreUser struct {
 	DisplayName string `firestore:"display_name"`
-	Chats       map[int]struct {
+	Chats       []struct {
 		Messages []struct {
 			From    string `firestore:"from"`
 			Message string `firestore:"message"`
@@ -54,7 +54,7 @@ func LoadChatHistory(ctx context.Context, userID string, chatID int) ([]llms.Mes
 	user := firestoreUser{}
 	userDoc.DataTo(&user)
 
-	if _, ok := user.Chats[chatID]; !ok {
+	if chatID >= len(user.Chats) {
 		logger.Printf("chat not found: %d", chatID)
 		return chatHistory, nil
 	}

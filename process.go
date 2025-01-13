@@ -14,9 +14,12 @@ func process(text string) string {
 	leagues := map[string]int{
 		"Premier League England":           609,
 		"English Premier League":           609,
+		"English Premier League England":   609,
 		"EFL Championship England":         9,
+		"English EFL Championship":         9,
 		"FA Cup":                           24,
 		"Carabao Cup":                      27,
+		"Dutch Eredivisie":                 72,
 		"Eredivisie Netherlands":           72,
 		"Bundesliga":                       82,
 		"Bundesliga Germany":               82,
@@ -25,6 +28,7 @@ func process(text string) string {
 		"Austrian Bundesliga":              181,
 		"Jupiler Pro League Belgium":       208,
 		"Belgian Pro League Belgium":       208,
+		"Belgian Pro League":               208,
 		"Prva HNL Croatia":                 244,
 		"Danish Superliga Denmark":         271,
 		"French Ligue 1":                   301,
@@ -37,6 +41,7 @@ func process(text string) string {
 		"Ekstraklasa":                      453,
 		"Primeira Liga Portugal":           462,
 		"Portuguese Primeira Liga":         462,
+		"Scottish Premiership":             501,
 		"Scottish Premiership Scotland":    501,
 		"La Liga Spain":                    564,
 		"Spanish La Liga":                  564,
@@ -44,13 +49,18 @@ func process(text string) string {
 		"Copa Del Rey":                     570,
 		"Allsvenskan Sweden":               573,
 		"Swiss Super League Switzerland":   591,
+		"Turkish Super Lig":                600,
 		"Super Lig":                        600,
 		"Super Lig Turkey":                 600,
+		"Turkish Super Lig Turkey":         600,
 		"Ukrainian Premier League Ukraine": 609,
 		"Premier League Ukraine":           609,
 		"Ukrainian Premier League":         609,
 		"UEFA Europa League Play-offs":     1371,
 	}
+
+	// replace newlines with <br /> for HTML
+	text = strings.Replace(text, "\n", "<br />", -1)
 
 	leaguesLower := make(map[string]int)
 	for name, id := range leagues {
@@ -65,7 +75,7 @@ func process(text string) string {
 		fullname := strings.ToLower(submatches[1])
 		name := submatches[2]
 
-		if id, ok := leaguesLower[fullname]; ok {
+		if id, ok := leaguesLower[strings.Trim(fullname, ",")]; ok {
 			return fmt.Sprintf(`<a href="/league/%d">%s</a>`, id, name)
 		}
 		return name

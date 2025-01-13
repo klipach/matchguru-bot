@@ -188,7 +188,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	chatHistory = append(chatHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
-	gpt4Turbo, err := openai.New(
+	gpt4o, err := openai.New(
 		openai.WithModel("gpt-4o"),
 		openai.WithToken(openaiAPIKey),
 	)
@@ -198,7 +198,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortResp, err := gpt4Turbo.GenerateContent(
+	shortResp, err := gpt4o.GenerateContent(
 		ctx,
 		append(
 			[]llms.MessageContent{
@@ -206,6 +206,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			},
 			chatHistory...,
 		),
+		llms.WithTemperature(0.8),
 		llms.WithMaxTokens(1000),
 	)
 	if err != nil {
@@ -257,6 +258,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 				llms.TextParts(llms.ChatMessageTypeSystem, perplexityPromptStr.String()),
 				llms.TextParts(llms.ChatMessageTypeHuman, shortResp.Choices[0].Content),
 			},
+			llms.WithTemperature(0.8),
 			llms.WithMaxTokens(1000),
 		)
 		if err != nil {
@@ -269,7 +271,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		mainPromptStr.WriteString("Additional info for the request: " + perplexityResp.Choices[0].Content)
 	}
 
-	completion, err := gpt4Turbo.GenerateContent(
+	completion, err := gpt4o.GenerateContent(
 		ctx,
 		append(
 			[]llms.MessageContent{
@@ -277,6 +279,8 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			},
 			chatHistory...,
 		),
+		llms.WithTemperature(0.8),
+		llms.WithMaxTokens(1000),
 	)
 
 	if err != nil {
