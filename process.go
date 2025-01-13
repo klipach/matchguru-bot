@@ -3,68 +3,41 @@ package matchguru
 import (
 	"fmt"
 	"regexp"
-	"strings"
+	"strconv"
 )
 
 var (
-	leagueRegexp = regexp.MustCompile(`<l fullname="([^"]+)">([^<]+)</l>`)
+	leagueRegexp = regexp.MustCompile(`<l id="([^"]+)">([^<]+)</l>`)
 )
 
 func process(text string) string {
-	leagues := map[string]int{
-		"Premier League England":           609,
-		"English Premier League":           609,
-		"English Premier League England":   609,
-		"EFL Championship England":         9,
-		"English EFL Championship":         9,
-		"FA Cup":                           24,
-		"Carabao Cup":                      27,
-		"Dutch Eredivisie":                 72,
-		"Eredivisie Netherlands":           72,
-		"Bundesliga":                       82,
-		"Bundesliga Germany":               82,
-		"German Bundesliga":                82,
-		"Austrian Bundesliga Austria":      181,
-		"Austrian Bundesliga":              181,
-		"Jupiler Pro League Belgium":       208,
-		"Belgian Pro League Belgium":       208,
-		"Belgian Pro League":               208,
-		"Prva HNL Croatia":                 244,
-		"Danish Superliga Denmark":         271,
-		"French Ligue 1":                   301,
-		"Ligue 1 France":                   301,
-		"Italian Serie A":                  384,
-		"Serie A Italy":                    384,
-		"Serie B Italy":                    387,
-		"Coppa Italia":                     390,
-		"Eliteserien":                      444,
-		"Ekstraklasa":                      453,
-		"Primeira Liga Portugal":           462,
-		"Portuguese Primeira Liga":         462,
-		"Scottish Premiership":             501,
-		"Scottish Premiership Scotland":    501,
-		"La Liga Spain":                    564,
-		"Spanish La Liga":                  564,
-		"La Liga 2":                        567,
-		"Copa Del Rey":                     570,
-		"Allsvenskan Sweden":               573,
-		"Swiss Super League Switzerland":   591,
-		"Turkish Super Lig":                600,
-		"Super Lig":                        600,
-		"Super Lig Turkey":                 600,
-		"Turkish Super Lig Turkey":         600,
-		"Ukrainian Premier League Ukraine": 609,
-		"Premier League Ukraine":           609,
-		"Ukrainian Premier League":         609,
-		"UEFA Europa League Play-offs":     1371,
-	}
-
-	// replace newlines with <br /> for HTML
-	text = strings.Replace(text, "\n", "<br />", -1)
-
-	leaguesLower := make(map[string]int)
-	for name, id := range leagues {
-		leaguesLower[strings.ToLower(name)] = id
+	var transfermarktToSportmonksID = map[int]int{
+		8:    310,  // English Premier League
+		9:    313,  // English EFL Championship
+		24:   3290, // FA Cup
+		27:   3300, // Carabao Cup
+		72:   314,  // Eredivisie
+		82:   3500, // German Bundesliga
+		181:  507,  // Austrian Bundesliga
+		208:  608,  // Belgian Pro League
+		244:  591,  // Prva HNL (Croatia)
+		271:  3434, // Danish Superliga
+		301:  331,  // Ligue 1 (France)
+		384:  599,  // Serie A (Italy)
+		387:  605,  // Serie B (Italy)
+		390:  620,  // Coppa Italia
+		444:  442,  // Eliteserien (Norway)
+		453:  388,  // Ekstraklasa (Poland)
+		462:  3362, // Primeira Liga (Portugal)
+		501:  5011, // Scottish Premiership
+		564:  3372, // La Liga (Spain)
+		567:  3373, // La Liga 2 (Spain)
+		570:  3374, // Copa del Rey (Spain)
+		573:  3401, // Allsvenskan (Sweden)
+		591:  3441, // Swiss Super League
+		600:  3499, // Turkish Süper Lig
+		609:  306,  // Ukrainian Premier
+		1371: 1041, // UEFA Europa League Play-offs
 	}
 
 	return leagueRegexp.ReplaceAllStringFunc(text, func(match string) string {
@@ -72,10 +45,14 @@ func process(text string) string {
 		if len(submatches) < 3 {
 			return match
 		}
-		fullname := strings.ToLower(submatches[1])
+		transfermarktIDStr := submatches[1]
 		name := submatches[2]
+		transfermarktID, err := strconv.Atoi(transfermarktIDStr)
+		if err != nil {
+			return name
+		}
 
-		if id, ok := leaguesLower[strings.Trim(fullname, ",")]; ok {
+		if id, ok := transfermarktToSportmonksID[transfermarktID]; ok {
 			return fmt.Sprintf(`<a href="/league/%d">%s</a>`, id, name)
 		}
 		return name
