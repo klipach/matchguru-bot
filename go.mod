@@ -9,7 +9,7 @@ require (
 	cloud.google.com/go/firestore v1.17.0
 	cloud.google.com/go/logging v1.13.0
 	firebase.google.com/go/v4 v4.15.1
-	github.com/GoogleCloudPlatform/functions-framework-go v1.9.0
+	github.com/GoogleCloudPlatform/functions-framework-go v1.9.1
 	github.com/tmc/langchaingo v0.1.12
 )
 
