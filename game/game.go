@@ -16,6 +16,7 @@ type Game struct {
 	StartingAt time.Time
 	League     string
 	Season     string
+	Country    string
 }
 
 type FixtureResponse struct {
@@ -24,7 +25,10 @@ type FixtureResponse struct {
 		Name                string `json:"name"`
 		StartingAtTimestamp int64  `json:"starting_at_timestamp"`
 		League              struct {
-			Name string `json:"name"`
+			Name    string `json:"name"`
+			Country struct {
+				Name string `json:"name"`
+			} `json:"country"`
 		} `json:"league"`
 		Season struct {
 			Name string `json:"name"`
@@ -43,7 +47,7 @@ func Fetch(ctx context.Context, gameID int) (*Game, error) {
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodGet,
-		sportmonksBaseURL+fmt.Sprintf("/v3/football/fixtures/%d/?include=league:name,image_path;season:name;round:name;participants.country:name;scores;venue;lineups.player;statistics;referees.referee;state", gameID),
+		sportmonksBaseURL+fmt.Sprintf("/v3/football/fixtures/%d/?include=league:name;season:name;round:name;league.country;participants.country:name;scores;venue;lineups.player;referees.referee;state", gameID),
 		http.NoBody,
 	)
 	if err != nil {
@@ -79,5 +83,6 @@ func Fetch(ctx context.Context, gameID int) (*Game, error) {
 		StartingAt: time.Unix(fixture.Data.StartingAtTimestamp, 0),
 		League:     fixture.Data.League.Name,
 		Season:     fixture.Data.Season.Name,
+		Country:    fixture.Data.League.Country.Name,
 	}, nil
 }

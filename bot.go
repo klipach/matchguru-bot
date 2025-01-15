@@ -142,7 +142,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			GameStartingAt: gg.StartingAt,
 			GameLeague:     gg.League,
 			Season:         gg.Season,
-			Country:        gg.League,
+			Country:        gg.Country,
 		})
 	if err != nil {
 		logger.Printf("error while executing mainPrompt: %v", err)
@@ -174,7 +174,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			GameStartingAt: gg.StartingAt,
 			GameLeague:     gg.League,
 			Season:         gg.Season,
-			Country:        gg.League,
+			Country:        gg.Country,
 		})
 
 	if err != nil {
@@ -303,7 +303,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	// allow only tags that are supported by app
 	policy := bluemonday.NewPolicy()
-	policy.AllowElements("br", "s", "i", "b")
+	policy.AllowElements("br", "s", "i", "b", "a")
 
 	safeHTML := policy.SanitizeBytes(unsafeHTML)
 	response = string(safeHTML)
