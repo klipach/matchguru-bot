@@ -16,13 +16,16 @@ const (
 	fromAI                  = "AI"
 )
 
+type firestoreMessage struct {
+	From    string `firestore:"from"`
+	Message string `firestore:"message"`
+}
+
 type firestoreUser struct {
 	DisplayName string `firestore:"display_name"`
 	Chats       []struct {
-		Messages []struct {
-			From    string `firestore:"from"`
-			Message string `firestore:"message"`
-		} `firestore:"messages"`
+		ChatID  int `firestore:"chat_id"`
+		Messages []firestoreMessage `firestore:"messages"`
 	} `firestore:"chats"`
 }
 
@@ -54,12 +57,22 @@ func LoadChatHistory(ctx context.Context, userID string, chatID int) ([]llms.Mes
 	user := firestoreUser{}
 	userDoc.DataTo(&user)
 
-	if chatID >= len(user.Chats) {
+	var messages []firestoreMessage
+	chatFound := false
+	for _, c := range user.Chats {
+		if c.ChatID == chatID {
+			messages = c.Messages
+			logger.Printf("chat found: %d", chatID)
+			chatFound = true
+			break
+		}
+	}
+	if !chatFound {
 		logger.Printf("chat not found: %d", chatID)
 		return chatHistory, nil
 	}
 
-	for _, m := range user.Chats[chatID].Messages {
+	for _, m := range messages {
 		switch m.From {
 		case fromUser:
 			chatHistory = append(chatHistory, llms.TextParts(llms.ChatMessageTypeHuman, m.Message))

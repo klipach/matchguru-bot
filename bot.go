@@ -220,7 +220,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logger.Printf("short response: %s", shortResp.Choices[0].Content)
-	if strings.ToLower(shortResp.Choices[0].Content) != "no" {
+	if strings.ToLower(strings.Trim(shortResp.Choices[0].Content, ". \t")) != "no" {
 		logger.Printf("external knowledge required, perplexity request: %s", shortResp.Choices[0].Content)
 		perplexityClient, err := openai.New(
 			// Supported models: https://docs.perplexity.ai/docs/model-cards
