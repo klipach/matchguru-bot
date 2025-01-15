@@ -59,9 +59,6 @@ func process(text string) string {
 		"UEFA Europa League Play-offs":     1371,
 	}
 
-	// replace newlines with <br /> for HTML
-	text = strings.Replace(text, "\n", "<br />", -1)
-
 	leaguesLower := make(map[string]int)
 	for name, id := range leagues {
 		leaguesLower[strings.ToLower(name)] = id
@@ -72,10 +69,10 @@ func process(text string) string {
 		if len(submatches) < 3 {
 			return match
 		}
-		fullname := strings.ToLower(submatches[1])
+		fullname := strings.ReplaceAll(strings.ToLower(submatches[1]), ",", "")
 		name := submatches[2]
 
-		if id, ok := leaguesLower[strings.Trim(fullname, ",")]; ok {
+		if id, ok := leaguesLower[fullname]; ok {
 			return fmt.Sprintf(`<a href="/league/%d">%s</a>`, id, name)
 		}
 		return name

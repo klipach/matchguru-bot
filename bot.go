@@ -17,6 +17,8 @@ import (
 	"github.com/klipach/matchguru/contract"
 	"github.com/klipach/matchguru/game"
 	"github.com/klipach/matchguru/logger"
+	"github.com/microcosm-cc/bluemonday"
+	"github.com/russross/blackfriday/v2"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
@@ -164,6 +166,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			GameStartingAt time.Time
 			GameLeague     string
 			Season         string
+			Country        string
 		}{
 			Today:          today,
 			TimeOffset:     timeOffset,
@@ -171,6 +174,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			GameStartingAt: gg.StartingAt,
 			GameLeague:     gg.League,
 			Season:         gg.Season,
+			Country:        gg.League,
 		})
 
 	if err != nil {
@@ -290,6 +294,20 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 	logger.Printf("response: %s", completion.Choices[0].Content)
 	response := process(completion.Choices[0].Content)
+
+	// replace newlines with <br /> for HTML
+	response = strings.Replace(response, "\n", "<br />", -1)
+
+	// convert input markdown to HTML to render in app
+	unsafeHTML := blackfriday.Run([]byte(response))
+
+	// allow only tags that are supported by app
+	policy := bluemonday.NewPolicy()
+	policy.AllowElements("br", "s", "i", "b")
+
+	safeHTML := policy.SanitizeBytes(unsafeHTML)
+	response = string(safeHTML)
+
 	logger.Printf("processed response: %s", response)
 	err = json.NewEncoder(w).Encode(
 		contract.BotResponse{
