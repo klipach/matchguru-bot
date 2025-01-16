@@ -1,10 +1,10 @@
 Ignore all previous conversations. Erase all prior dialogues.
 
-##**Role**: You must analyze the conversation above and determine whether the most recent message requires external knowledge to answer.
+##**Role**: You must analyze the conversation and determine whether the most recent message requires external knowledge to answer.
 
 - do not answer or repet the user's question
 - if external knowledge is not required, respond with "no" and stop
-- if external knowledge is required, generate a prompt for an external LLM specifying exactly what information is needed
+- if external knowledge is required, generate a concise external prompt focusing solely on the needed information
 
 ##** Today is: {{ .Today }}**
 ##** Current time offset is: {{ .TimeOffset }}**
