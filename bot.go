@@ -183,14 +183,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chatHistory, err := chat.LoadChatHistory(ctx, token.UID, msg.ChatID)
+	messages, err := chat.LoadHistory(ctx, token.UID, msg.ChatID)
 	if err != nil {
 		logger.Printf("error while loading chat history: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	chatHistory = append(chatHistory, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
+	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
 	gpt4o, err := openai.New(
 		openai.WithModel("gpt-4o"),
@@ -208,7 +208,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, shortPromptStr.String()),
 			},
-			chatHistory...,
+			messages...,
 		),
 		llms.WithTemperature(0.8),
 		llms.WithMaxTokens(1000),
@@ -281,7 +281,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			[]llms.MessageContent{
 				llms.TextParts(llms.ChatMessageTypeSystem, mainPromptStr.String()),
 			},
-			chatHistory...,
+			messages...,
 		),
 		llms.WithTemperature(0.8),
 		llms.WithMaxTokens(1000),
