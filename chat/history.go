@@ -26,7 +26,7 @@ type firestoreUser struct {
 	} `firestore:"chats"`
 }
 
-func LoadChatHistory(ctx context.Context, userID string, chatID int) ([]llms.MessageContent, error) {
+func LoadHistory(ctx context.Context, userID string, chatID int) ([]llms.MessageContent, error) {
 	logger := logger.FromContext(ctx)
 
 	var chatHistory []llms.MessageContent
