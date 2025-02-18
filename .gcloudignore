@@ -1,8 +1,12 @@
 .env.*
 .gcloudignore
 .git
+.github
 .gitignore
+.idea
 .vscode
 firebase.json
 Makefile
 readme.md
+*.rest
+*_test.go
