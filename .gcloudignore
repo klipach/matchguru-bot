@@ -1,3 +1,4 @@
+.editorconfig
 .env.*
 .gcloudignore
 .git
@@ -5,6 +6,7 @@
 .gitignore
 .idea
 .vscode
+docker-compose.yaml
 firebase.json
 Makefile
 readme.md
