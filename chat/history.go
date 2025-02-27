@@ -3,10 +3,11 @@ package chat
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"cloud.google.com/go/compute/metadata"
 	"cloud.google.com/go/firestore"
-	"github.com/klipach/matchguru/logger"
+	"github.com/klipach/matchguru/log"
 	"github.com/tmc/langchaingo/llms"
 )
 
@@ -32,7 +33,7 @@ type firestoreChat struct {
 }
 
 func LoadHistory(ctx context.Context, userID string, chatID int) ([]llms.MessageContent, error) {
-	logger := logger.FromContext(ctx)
+	logger := log.New()
 
 	var chatHistory []llms.MessageContent
 
@@ -52,7 +53,7 @@ func LoadHistory(ctx context.Context, userID string, chatID int) ([]llms.Message
 		return chatHistory, err
 	}
 	if !userDoc.Exists() {
-		logger.Printf("user not found: %s", userID)
+		logger.Warn("user not found", slog.String("userID", userID))
 		return chatHistory, nil
 	}
 
@@ -61,7 +62,7 @@ func LoadHistory(ctx context.Context, userID string, chatID int) ([]llms.Message
 
 	messages := findChatMessages(user.Chats, chatID)
 	if messages == nil {
-		logger.Printf("chat not found: %d", chatID)
+		logger.Warn("chat not found", slog.Int("chatID", chatID))
 		return chatHistory, nil
 	}
 
