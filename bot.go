@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -15,8 +16,8 @@ import (
 	"github.com/klipach/matchguru/auth"
 	"github.com/klipach/matchguru/chat"
 	"github.com/klipach/matchguru/contract"
-	"github.com/klipach/matchguru/game"
-	"github.com/klipach/matchguru/logger"
+	"github.com/klipach/matchguru/fixture"
+	"github.com/klipach/matchguru/log"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/russross/blackfriday/v2"
 	"github.com/tmc/langchaingo/llms"
@@ -25,12 +26,15 @@ import (
 
 const (
 	gcloudFuncSourceDir = "serverless_function_source_code"
+	ErrorMsgField       = "errorMsg"
 )
 
 var (
 	openaiAPIKey     = os.Getenv("OPENAI_API_KEY")
 	perplexityApiKey = os.Getenv("PERPLEXITY_API_KEY")
 )
+
+type ()
 
 func init() {
 	functions.HTTP("Bot", Bot)
@@ -48,26 +52,26 @@ func fixDir() {
 
 func Bot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logger := logger.FromContext(ctx)
+	logger := log.New()
 
-	logger.Println("bot function called")
+	logger.Info("bot function called")
 
 	if r.Method != http.MethodPost {
-		logger.Printf("invalid method: %s", r.Method)
+		logger.Error("invalid method: " + r.Method)
 		http.Error(w, "Method Not Implemented", http.StatusNotImplemented)
 		return
 	}
 
 	token, err := auth.Authenticate(r)
 	if err != nil {
-		logger.Printf("error while authenticating: %v", err)
+		logger.Error("error while authenticating", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	mainPrompt, err := template.New("main.tmpl").ParseFiles("prompts/main.tmpl")
 	if err != nil {
-		logger.Printf("error while parsing mainPrompt: %v", err)
+		logger.Error("error while parsing mainPrompt", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -75,19 +79,19 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	var msg contract.BotRequest
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.Printf("error while reading request body: %v", err)
+		logger.Error("error while reading request body", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	logger.Printf("message: %v", string(data))
+	logger.Info(fmt.Sprintf("incoming request payload: %s", string(data)))
 
 	if err := json.Unmarshal(data, &msg); err != nil {
-		logger.Printf("error while decoding request: %v", err)
+		logger.Error("error while decoding request", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
-	// test message:
+	// test message
 	if strings.TrimSpace(msg.Message) == "test" {
 		resp := contract.BotResponse{
 			Response: `<b> hi there</b>
@@ -101,7 +105,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		}
 		err = json.NewEncoder(w).Encode(resp)
 		if err != nil {
-			logger.Printf("error while encoding response: %v", err)
+			logger.Error("error while encoding response", slog.String(ErrorMsgField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -109,50 +113,23 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 	loc, err := time.LoadLocation(msg.Timezone)
 	if err != nil {
-		logger.Printf("error while loading location: %v", err)
+		logger.Error("error while loading location", slog.String(ErrorMsgField, err.Error()))
 	}
-	today := time.Now().In(loc).Format("2006-01-02")
-	_, offset := time.Now().In(loc).Zone()
-	timeOffset := fmt.Sprintf("%+03d:%+02d", offset/3600, offset/60%60)
+	userNow := time.Now().In(loc).Format(time.RFC1123Z)
 
-	gg := &game.Game{}
+	f := &fixture.Fixture{}
 	if msg.GameID != 0 {
-		gg, err = game.Fetch(ctx, msg.GameID)
+		f, err = fixture.Fetch(ctx, msg.GameID)
+		f.StartingAt = f.StartingAt.In(loc)
 		if err != nil {
-			logger.Printf("error while fetching game: %v", err)
+			logger.Error("error while fetching game", slog.String(ErrorMsgField, err.Error()))
 		}
-		logger.Printf("game fetched %v+", gg)
-	}
-
-	var mainPromptStr strings.Builder
-	err = mainPrompt.Execute(
-		&mainPromptStr,
-		struct {
-			Today          string
-			TimeOffset     string
-			GameName       string
-			GameStartingAt time.Time
-			GameLeague     string
-			Season         string
-			Country        string
-		}{
-			Today:          today,
-			TimeOffset:     timeOffset,
-			GameName:       gg.Name,
-			GameStartingAt: gg.StartingAt,
-			GameLeague:     gg.League,
-			Season:         gg.Season,
-			Country:        gg.Country,
-		})
-	if err != nil {
-		logger.Printf("error while executing mainPrompt: %v", err)
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
+		logger.Info(fmt.Sprintf("fixture fetched %v+", f))
 	}
 
 	shortPrompt, err := template.New("short.tmpl").ParseFiles("prompts/short.tmpl")
 	if err != nil {
-		logger.Printf("error while parsing shortPrompt: %v", err)
+		logger.Error("error while parsing shortPrompt", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -160,32 +137,23 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	err = shortPrompt.Execute(
 		&shortPromptStr,
 		struct {
-			Today          string
-			TimeOffset     string
-			GameName       string
-			GameStartingAt time.Time
-			GameLeague     string
-			Season         string
-			Country        string
+			UserNow string
+			Fixture *fixture.Fixture
 		}{
-			Today:          today,
-			TimeOffset:     timeOffset,
-			GameName:       gg.Name,
-			GameStartingAt: gg.StartingAt,
-			GameLeague:     gg.League,
-			Season:         gg.Season,
-			Country:        gg.Country,
-		})
+			UserNow: userNow,
+			Fixture: f,
+		},
+	)
 
 	if err != nil {
-		logger.Printf("error while executing shortPrompt: %v", err)
+		logger.Error("error while executing shortPrompt", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	messages, err := chat.LoadHistory(ctx, token.UID, msg.ChatID)
 	if err != nil {
-		logger.Printf("error while loading chat history: %v", err)
+		logger.Error("error while loading chat history", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -197,7 +165,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		openai.WithToken(openaiAPIKey),
 	)
 	if err != nil {
-		logger.Printf("error while creating gpt4Turbo: %v", err)
+		logger.Error("error while creating gpt4Turbo", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
@@ -214,14 +182,15 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		llms.WithMaxTokens(1000),
 	)
 	if err != nil {
-		logger.Printf("CreateChatCompletion short error: %v", err)
+		logger.Error("failed to ret response shortPrompt", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	logger.Printf("short response: %s", shortResp.Choices[0].Content)
+	logger.Info(fmt.Sprintf("short response: %s", shortResp.Choices[0].Content))
+	var additionalInfo string
 	if strings.ToLower(shortResp.Choices[0].Content) != "no" {
-		logger.Printf("external knowledge required, perplexity request: %s", shortResp.Choices[0].Content)
+		logger.Info(fmt.Sprintf("external knowledge required, perplexity request: %s", shortResp.Choices[0].Content))
 		perplexityClient, err := openai.New(
 			// Supported models: https://docs.perplexity.ai/docs/model-cards
 			openai.WithModel("llama-3.1-sonar-small-128k-online"),
@@ -229,14 +198,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			openai.WithToken(perplexityApiKey),
 		)
 		if err != nil {
-			logger.Printf("error while creating perplexity client: %v", err)
+			logger.Error("error while creating perplexity client", slog.String(ErrorMsgField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		perplexityPrompt, err := template.New("perplexity.tmpl").ParseFiles("prompts/perplexity.tmpl")
 		if err != nil {
-			logger.Printf("error while parsing perplexityPrompt: %v", err)
+			logger.Error("error while parsing perplexityPrompt", slog.String(ErrorMsgField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -245,14 +214,12 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		err = perplexityPrompt.Execute(
 			&perplexityPromptStr,
 			struct {
-				Today      string
-				TimeOffset string
+				UserNow string
 			}{
-				Today:      time.Now().Format("2006-01-02"),
-				TimeOffset: timeOffset,
+				UserNow: userNow,
 			})
 		if err != nil {
-			logger.Printf("error while executing perplexityPrompt: %v", err)
+			logger.Error("error while executing perplexityPrompt", slog.String(ErrorMsgField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -266,14 +233,35 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			llms.WithMaxTokens(1000),
 		)
 		if err != nil {
-			logger.Printf("error while generating from single prompt: %v", err)
+			logger.Error("error while generating from single prompt", slog.String(ErrorMsgField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		logger.Printf("perplexity response: %s", perplexityResp.Choices[0].Content)
+		logger.Info(fmt.Sprintf("perplexity response: %s", perplexityResp.Choices[0].Content))
 
-		mainPromptStr.WriteString("Additional info for the request: " + perplexityResp.Choices[0].Content)
+		additionalInfo = perplexityResp.Choices[0].Content
 	}
+
+	var mainPromptStr strings.Builder
+	err = mainPrompt.Execute(
+		&mainPromptStr,
+		struct {
+			UserNow        string
+			AdditionalInfo string
+			Fixture        *fixture.Fixture
+		}{
+			UserNow:        userNow,
+			AdditionalInfo: additionalInfo,
+			Fixture:        f,
+		},
+	)
+	if err != nil {
+		logger.Error("error while executing mainPrompt", slog.String(ErrorMsgField, err.Error()))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	logger.Info(fmt.Sprintf("mainPrompt: %s", mainPromptStr.String()))
 
 	completion, err := gpt4o.GenerateContent(
 		ctx,
@@ -288,11 +276,11 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
-		logger.Printf("ChatCompletion error: %v", err)
+		logger.Error("ChatCompletion error", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	logger.Printf("response: %s", completion.Choices[0].Content)
+	logger.Info(fmt.Sprintf("response: %s", completion.Choices[0].Content))
 	response := process(completion.Choices[0].Content)
 
 	// replace newlines with <br /> for HTML
@@ -308,14 +296,14 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	safeHTML := policy.SanitizeBytes(unsafeHTML)
 	response = string(safeHTML)
 
-	logger.Printf("processed response: %s", response)
+	logger.Info(fmt.Sprintf("processed response: %s", response))
 	err = json.NewEncoder(w).Encode(
 		contract.BotResponse{
 			Response: response,
 		},
 	)
 	if err != nil {
-		logger.Printf("error while encoding response: %v", err)
+		logger.Error("error while encoding response", slog.String(ErrorMsgField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

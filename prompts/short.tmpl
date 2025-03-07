@@ -10,14 +10,18 @@
 4. "<Additional Instructions>": Here in this section instruct or list any specific additional information's.
 ""CRITICAL": The Main aim of this prompt generation is to get external exact, true and most updated information needed to answer the details/question asked by the user."
 
-##** Today is: {{ .Today }}**
-##** Current time offset is: {{ .TimeOffset }}**
+##** User local time: {{ .UserNow }}**
 
-{{ if .GameName }}
+{{ if .Fixture }}
 ## **Current Soccer Game Context**:
-- **Match**: "{{ .GameName }}"
-- **Kick-off Time**: {{ .GameStartingAt }}
-- **League**: "{{ .GameLeague }}"
-- **Season**: {{ .Season }}
-- **Country**: {{ .Country }}
+- **Match**: "{{ .Fixture.Name }}"
+- **Kick-off user local time**: {{ .Fixture.StartingAt }}
+- **League**: "{{ .Fixture.League.Name }}"
+- **Country League**: {{ .Fixture.League.Country }}
+- **Season**: {{ .Fixture.Season }}
+- **Participants**:
+    - Home Team: {{ .Fixture.HomeTeam.Name }} from {{ .Fixture.HomeTeam.Country }}
+    - Away Team: {{ .Fixture.AwayTeam.Name }} from {{ .Fixture.AwayTeam.Country }}
+- **Venue**: {{ .Fixture.Venue.Name }} {{ .Fixture.Venue.Country }}, {{ .Fixture.Venue.City }}
+- who is going to win - predictions
 {{ end }}
