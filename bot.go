@@ -1,12 +1,15 @@
 package matchguru
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -18,23 +21,84 @@ import (
 	"github.com/klipach/matchguru/contract"
 	"github.com/klipach/matchguru/fixture"
 	"github.com/klipach/matchguru/log"
-	"github.com/microcosm-cc/bluemonday"
-	"github.com/russross/blackfriday/v2"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
 const (
+	ErrorMsgLogField = "errorMsg"
+	promptLogField   = "prompt"
+	bodyLogField     = "body"
+
 	gcloudFuncSourceDir = "serverless_function_source_code"
-	ErrorMsgField       = "errorMsg"
+	openAIModel         = "gpt-4o-search-preview"
 )
 
 var (
-	openaiAPIKey     = os.Getenv("OPENAI_API_KEY")
-	perplexityApiKey = os.Getenv("PERPLEXITY_API_KEY")
+	openaiAPIKey = os.Getenv("OPENAI_API_KEY")
 )
 
-type ()
+// ModifyingRoundTripper removes the "temperature" field and adds "web_search_options".
+type modifyingRoundTripper struct {
+	rt http.RoundTripper
+}
+
+func (mrt *modifyingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Read the initial request body.
+	var bodyBytes []byte
+	if req.Body != nil {
+		bodyBytes, _ = io.ReadAll(req.Body)
+	}
+
+	// Attempt to modify JSON.
+	var modifiedBody []byte
+	var jsonData map[string]any
+	if err := json.Unmarshal(bodyBytes, &jsonData); err == nil {
+		// Remove the "temperature" key.
+		delete(jsonData, "temperature")
+		// Add "web_search_options" field with an empty object.
+		jsonData["web_search_options"] = map[string]any{}
+		if mBody, err := json.Marshal(jsonData); err == nil {
+			modifiedBody = mBody
+		} else {
+			// If marshalling fails, fallback to the original body.
+			modifiedBody = bodyBytes
+		}
+	} else {
+		// Not valid JSON, so fallback.
+		modifiedBody = bodyBytes
+	}
+
+	// Reset req.Body so it can be read by downstream clients.
+	req.Body = io.NopCloser(bytes.NewBuffer(modifiedBody))
+	// Update ContentLength accordingly.
+	req.ContentLength = int64(len(modifiedBody))
+	req.Header.Set("Content-Length", strconv.Itoa(len(modifiedBody)))
+
+	return mrt.rt.RoundTrip(req)
+}
+
+// LoggingRoundTripper logs the outgoing request details.
+type loggingRoundTripper struct {
+	rt     http.RoundTripper
+	logger *slog.Logger
+}
+
+func (lrt *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Read the current request body.
+	var bodyBytes []byte
+	if req.Body != nil {
+		bodyBytes, _ = io.ReadAll(req.Body)
+	}
+	// Reset req.Body so it can be read downstream.
+	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	lrt.logger.Info("Outgoing openAI request",
+		slog.String("url", req.URL.String()),
+		slog.String(bodyLogField, string(bodyBytes)),
+	)
+	return lrt.rt.RoundTrip(req)
+}
 
 func init() {
 	functions.HTTP("Bot", Bot)
@@ -64,29 +128,22 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 
 	token, err := auth.Authenticate(r)
 	if err != nil {
-		logger.Error("error while authenticating", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("error while authenticating", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	mainPrompt, err := template.New("main.tmpl").ParseFiles("prompts/main.tmpl")
-	if err != nil {
-		logger.Error("error while parsing mainPrompt", slog.String(ErrorMsgField, err.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	var msg contract.BotRequest
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.Error("error while reading request body", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("error while reading request body", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	logger.Info(fmt.Sprintf("incoming request payload: %s", string(data)))
+	logger.Info("incoming reques", slog.String(bodyLogField, string(data)))
 
 	if err := json.Unmarshal(data, &msg); err != nil {
-		logger.Error("error while decoding request", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("error while decoding request", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
@@ -105,7 +162,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		}
 		err = json.NewEncoder(w).Encode(resp)
 		if err != nil {
-			logger.Error("error while encoding response", slog.String(ErrorMsgField, err.Error()))
+			logger.Error("error while encoding response", slog.String(ErrorMsgLogField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -113,29 +170,61 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 	loc, err := time.LoadLocation(msg.Timezone)
 	if err != nil {
-		logger.Error("error while loading location", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("error while loading location", slog.String(ErrorMsgLogField, err.Error()))
 	}
 	userNow := time.Now().In(loc).Format(time.RFC1123Z)
 
 	f := &fixture.Fixture{}
 	if msg.GameID != 0 {
 		f, err = fixture.Fetch(ctx, msg.GameID)
-		f.StartingAt = f.StartingAt.In(loc)
 		if err != nil {
-			logger.Error("error while fetching game", slog.String(ErrorMsgField, err.Error()))
+			logger.Error("error while fetching fixture", slog.String(ErrorMsgLogField, err.Error()))
+		} else {
+			f.StartingAt = f.StartingAt.In(loc)
+			logger.Info(fmt.Sprintf("fixture fetched %v+", f))
 		}
-		logger.Info(fmt.Sprintf("fixture fetched %v+", f))
 	}
 
-	shortPrompt, err := template.New("short.tmpl").ParseFiles("prompts/short.tmpl")
+	messages, err := chat.LoadHistory(ctx, token.UID, msg.ChatID)
 	if err != nil {
-		logger.Error("error while parsing shortPrompt", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("error while loading chat history", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	var shortPromptStr strings.Builder
-	err = shortPrompt.Execute(
-		&shortPromptStr,
+
+	// append user message to the messages history
+	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
+
+	openAIClient, err := openai.New(
+		openai.WithModel(openAIModel),
+		openai.WithToken(openaiAPIKey),
+		openai.WithHTTPClient(
+			&http.Client{
+				Transport: &modifyingRoundTripper{
+					rt: &loggingRoundTripper{
+						rt:     http.DefaultTransport,
+						logger: logger,
+					},
+				},
+			},
+		),
+	)
+	if err != nil {
+		logger.Error("error while creating openAI client", slog.String(ErrorMsgLogField, err.Error()))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	mainPrompt, err := template.New("main.tmpl").ParseFiles("prompts/main.tmpl")
+	if err != nil {
+		logger.Error("error while parsing mainPrompt", slog.String(ErrorMsgLogField, err.Error()))
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	var mainPromptStr strings.Builder
+	err = mainPrompt.Execute(
+		&mainPromptStr,
 		struct {
 			UserNow string
 			Fixture *fixture.Fixture
@@ -144,126 +233,24 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			Fixture: f,
 		},
 	)
-
 	if err != nil {
-		logger.Error("error while executing shortPrompt", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("error while executing mainPrompt", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	messages, err := chat.LoadHistory(ctx, token.UID, msg.ChatID)
-	if err != nil {
-		logger.Error("error while loading chat history", slog.String(ErrorMsgField, err.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	// Set SSE headers for streaming
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		logger.Error("streaming unsupported!")
+		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
 
-	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
-
-	gpt4o, err := openai.New(
-		openai.WithModel("gpt-4o"),
-		openai.WithToken(openaiAPIKey),
-	)
-	if err != nil {
-		logger.Error("error while creating gpt4Turbo", slog.String(ErrorMsgField, err.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	shortResp, err := gpt4o.GenerateContent(
-		ctx,
-		append(
-			[]llms.MessageContent{
-				llms.TextParts(llms.ChatMessageTypeSystem, shortPromptStr.String()),
-			},
-			messages...,
-		),
-		llms.WithTemperature(0.8),
-		llms.WithMaxTokens(1000),
-	)
-	if err != nil {
-		logger.Error("failed to ret response shortPrompt", slog.String(ErrorMsgField, err.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	logger.Info(fmt.Sprintf("short response: %s", shortResp.Choices[0].Content))
-	var additionalInfo string
-	if strings.ToLower(shortResp.Choices[0].Content) != "no" {
-		logger.Info(fmt.Sprintf("external knowledge required, perplexity request: %s", shortResp.Choices[0].Content))
-		perplexityClient, err := openai.New(
-			// Supported models: https://docs.perplexity.ai/docs/model-cards
-			openai.WithModel("llama-3.1-sonar-small-128k-online"),
-			openai.WithBaseURL("https://api.perplexity.ai"),
-			openai.WithToken(perplexityApiKey),
-		)
-		if err != nil {
-			logger.Error("error while creating perplexity client", slog.String(ErrorMsgField, err.Error()))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		perplexityPrompt, err := template.New("perplexity.tmpl").ParseFiles("prompts/perplexity.tmpl")
-		if err != nil {
-			logger.Error("error while parsing perplexityPrompt", slog.String(ErrorMsgField, err.Error()))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		var perplexityPromptStr strings.Builder
-		err = perplexityPrompt.Execute(
-			&perplexityPromptStr,
-			struct {
-				UserNow string
-			}{
-				UserNow: userNow,
-			})
-		if err != nil {
-			logger.Error("error while executing perplexityPrompt", slog.String(ErrorMsgField, err.Error()))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-
-		perplexityResp, err := perplexityClient.GenerateContent(ctx,
-			[]llms.MessageContent{
-				llms.TextParts(llms.ChatMessageTypeSystem, perplexityPromptStr.String()),
-				llms.TextParts(llms.ChatMessageTypeHuman, shortResp.Choices[0].Content),
-			},
-			llms.WithTemperature(0.8),
-			llms.WithMaxTokens(1000),
-		)
-		if err != nil {
-			logger.Error("error while generating from single prompt", slog.String(ErrorMsgField, err.Error()))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		logger.Info(fmt.Sprintf("perplexity response: %s", perplexityResp.Choices[0].Content))
-
-		additionalInfo = perplexityResp.Choices[0].Content
-	}
-
-	var mainPromptStr strings.Builder
-	err = mainPrompt.Execute(
-		&mainPromptStr,
-		struct {
-			UserNow        string
-			AdditionalInfo string
-			Fixture        *fixture.Fixture
-		}{
-			UserNow:        userNow,
-			AdditionalInfo: additionalInfo,
-			Fixture:        f,
-		},
-	)
-	if err != nil {
-		logger.Error("error while executing mainPrompt", slog.String(ErrorMsgField, err.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	logger.Info(fmt.Sprintf("mainPrompt: %s", mainPromptStr.String()))
-
-	completion, err := gpt4o.GenerateContent(
+	_, err = openAIClient.GenerateContent(
 		ctx,
 		append(
 			[]llms.MessageContent{
@@ -271,39 +258,24 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			},
 			messages...,
 		),
-		llms.WithTemperature(0.8),
+		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
+			msg := contract.BotResponse{Response: string(chunk)}
+			jsonData, err := json.Marshal(msg)
+			if err != nil {
+				return err
+			}
+			sseData := fmt.Sprintf("data: %s\n\n", jsonData)
+			if _, err := w.Write([]byte(sseData)); err != nil {
+				return err
+			}
+			flusher.Flush()
+			return nil
+		}),
 		llms.WithMaxTokens(1000),
 	)
 
 	if err != nil {
-		logger.Error("ChatCompletion error", slog.String(ErrorMsgField, err.Error()))
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	logger.Info(fmt.Sprintf("response: %s", completion.Choices[0].Content))
-	response := process(completion.Choices[0].Content)
-
-	// replace newlines with <br /> for HTML
-	response = strings.Replace(response, "\n", "<br />", -1)
-
-	// convert input markdown to HTML to render in app
-	unsafeHTML := blackfriday.Run([]byte(response))
-
-	// allow only tags that are supported by app
-	policy := bluemonday.NewPolicy()
-	policy.AllowElements("br", "s", "i", "b", "a")
-
-	safeHTML := policy.SanitizeBytes(unsafeHTML)
-	response = string(safeHTML)
-
-	logger.Info(fmt.Sprintf("processed response: %s", response))
-	err = json.NewEncoder(w).Encode(
-		contract.BotResponse{
-			Response: response,
-		},
-	)
-	if err != nil {
-		logger.Error("error while encoding response", slog.String(ErrorMsgField, err.Error()))
+		logger.Error("ChatCompletion error", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}

@@ -4,7 +4,6 @@ firebase deploy --only hosting
 ```
 
 
-
 ## Supported HTML tags in the message
 Bot support the same set of tags as Telegram API (source: https://help.publer.io/en/article/how-to-style-telegram-text-using-html-tags-xdepnw/)
 ```
@@ -18,14 +17,4 @@ Bot support the same set of tags as Telegram API (source: https://help.publer.io
 <code>inline fixed-width code</code>
 <pre>pre-formatted fixed-width code block</pre>
 <pre><code class="language-python">pre-formatted fixed-width code block written in the Python programming language</code></pre>
-```
-
-## Main flow
-```mermaid
-flowchart TB
-    A((Start)) --> B{External knowledge required <br>(ChatGPT)?}
-    B -- Yes --> C[Request data perplexity]
-    C --> D[Reply to customer <br>including perplexity response (ChatGPT)]
-    B -- No --> D
-    D((End))
 ```
