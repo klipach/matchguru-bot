@@ -1,0 +1,13 @@
+@jwtToken = ...
+
+### Bot test
+POST https://us-central1-match-guru-0iqc9r.cloudfunctions.net/bot
+Authorization: Bearer {{jwtToken}}
+Content-Type: application/json
+
+{
+    "message": "who is the president of US",
+    "timezone":"Europe/Berlin",
+    "chat_id": 10,
+    "game_id": null
+}

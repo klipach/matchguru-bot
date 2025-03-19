@@ -2,3 +2,4 @@
 .vscode
 .idea
 .env*
+service_account_key.json

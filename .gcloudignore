@@ -12,3 +12,5 @@ Makefile
 readme.md
 *.rest
 *_test.go
+cmd
+service_account_key.json
