@@ -149,19 +149,30 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// test message
-	if strings.TrimSpace(msg.Message) == "test" {
-		resp := contract.BotResponse{
-			Response: `<b> hi there</b>
-			<a href="/team/346">Team</a>
-			<a href="/player/4237">Player</a>
-			<a href="/league/384">League</a>
-			<a href="/fixture/19155228">Fixture</a>
-			<s>strikethrough</s>
-			<i>italic</i>
+	if strings.TrimSpace(strings.ToUpper(msg.Message)) == "test" {
+		// Set SSE headers for streaming
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		msg := contract.BotResponse{
+			Response: `**hi there**
+		[Team](/team/346)
+		[Player](/player/4237)
+		[League](/league/384)
+		[Fixture](/fixture/19155228)
+		~~strikethrough~~
+		*italic*
 			`,
 		}
-		err = json.NewEncoder(w).Encode(resp)
+		jsonData, err := json.Marshal(msg)
 		if err != nil {
+			logger.Error("error while encoding response", slog.String(ErrorMsgLogField, err.Error()))
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		sseData := fmt.Sprintf("data: %s\n\n", jsonData)
+		if _, err := w.Write([]byte(sseData)); err != nil {
 			logger.Error("error while encoding response", slog.String(ErrorMsgLogField, err.Error()))
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
