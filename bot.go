@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -37,9 +36,6 @@ const (
 
 var (
 	openaiAPIKey = os.Getenv("OPENAI_API_KEY")
-
-	inlineLinkRegex  = regexp.MustCompile(`!?(\[[^\]]+\])\(([^)]+)\)`)
-	referenceLinkDef = regexp.MustCompile(`(?m)^\[([^\]]+)\]:\s*(\S+)`)
 )
 
 // ModifyingRoundTripper removes the "temperature" field and adds "web_search_options".
@@ -47,64 +43,25 @@ type modifyingRoundTripper struct {
 	rt http.RoundTripper
 }
 
-type MarkdownFilter struct {
-	buffer string
-}
-
-func (mf *MarkdownFilter) ProcessChunk(chunk string) []string {
-	mf.buffer += chunk // Append incoming text chunk
-
-	// Remove links only if we have complete link structures
-	mf.buffer = inlineLinkRegex.ReplaceAllString(mf.buffer, "$1")
-	mf.buffer = referenceLinkDef.ReplaceAllString(mf.buffer, "")
-
-	// Emit safe chunks (~30 chars, keeping Markdown integrity)
-	return mf.emitChunks()
-}
-
-func (mf *MarkdownFilter) emitChunks() []string {
-	var result []string
-	for len(mf.buffer) > 30 {
-		splitPoint := strings.LastIndex(mf.buffer[:30], " ")
-		if splitPoint == -1 {
-			splitPoint = 30 // force split if no space is found
-		}
-		result = append(result, mf.buffer[:splitPoint])
-		mf.buffer = mf.buffer[splitPoint:]
-	}
-
-	return result
-}
-
-func (mf *MarkdownFilter) Flush() []string {
-	if len(mf.buffer) > 0 {
-		remaining := mf.buffer
-		mf.buffer = ""
-		return []string{remaining}
-	}
-	return nil
-}
-
 func SetupStreamingFunction(w io.Writer, flusher http.Flusher) func(ctx context.Context, chunk []byte) error {
-	mf := &MarkdownFilter{} // Persistent buffer per stream
+	mf := &MarkdownLinkFilter{} // Persistent buffer per stream
 
 	return func(ctx context.Context, chunk []byte) error {
 		// Process incoming chunk
-		cleanedChunks := mf.ProcessChunk(string(chunk))
-
-		for _, cleanedChunk := range cleanedChunks {
-			msg := contract.BotResponse{Response: cleanedChunk}
-			jsonData, err := json.Marshal(msg)
-			if err != nil {
-				return err
-			}
-			sseData := fmt.Sprintf("data: %s\n\n", jsonData)
-			if _, err := w.Write([]byte(sseData)); err != nil {
-				return err
-			}
-			flusher.Flush()
+		cleanedChunk := mf.ProcessChunk(string(chunk))
+		if cleanedChunk == "" {
+			return nil
 		}
-
+		msg := contract.BotResponse{Response: cleanedChunk}
+		jsonData, err := json.Marshal(msg)
+		if err != nil {
+			return err
+		}
+		sseData := fmt.Sprintf("data: %s\n\n", jsonData)
+		if _, err := w.Write([]byte(sseData)); err != nil {
+			return err
+		}
+		flusher.Flush()
 		return nil
 	}
 }
