@@ -43,6 +43,29 @@ type modifyingRoundTripper struct {
 	rt http.RoundTripper
 }
 
+func SetupStreamingFunction(w io.Writer, flusher http.Flusher) func(ctx context.Context, chunk []byte) error {
+	mf := &MarkdownLinkFilter{} // Persistent buffer per stream
+
+	return func(ctx context.Context, chunk []byte) error {
+		// Process incoming chunk
+		cleanedChunk := mf.ProcessChunk(string(chunk))
+		if cleanedChunk == "" {
+			return nil
+		}
+		msg := contract.BotResponse{Response: cleanedChunk}
+		jsonData, err := json.Marshal(msg)
+		if err != nil {
+			return err
+		}
+		sseData := fmt.Sprintf("data: %s\n\n", jsonData)
+		if _, err := w.Write([]byte(sseData)); err != nil {
+			return err
+		}
+		flusher.Flush()
+		return nil
+	}
+}
+
 func (mrt *modifyingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Read the initial request body.
 	var bodyBytes []byte
@@ -269,19 +292,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			},
 			messages...,
 		),
-		llms.WithStreamingFunc(func(ctx context.Context, chunk []byte) error {
-			msg := contract.BotResponse{Response: string(chunk)}
-			jsonData, err := json.Marshal(msg)
-			if err != nil {
-				return err
-			}
-			sseData := fmt.Sprintf("data: %s\n\n", jsonData)
-			if _, err := w.Write([]byte(sseData)); err != nil {
-				return err
-			}
-			flusher.Flush()
-			return nil
-		}),
+		llms.WithStreamingFunc(SetupStreamingFunction(w, flusher)),
 		llms.WithMaxTokens(1000),
 	)
 
