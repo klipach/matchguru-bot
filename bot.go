@@ -284,7 +284,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = openAIClient.GenerateContent(
+	resp, err := openAIClient.GenerateContent(
 		ctx,
 		append(
 			[]llms.MessageContent{
@@ -300,5 +300,11 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		logger.Error("ChatCompletion error", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
+	}
+
+	if len(resp.Choices) > 0 {
+		logger.Info("model response", slog.String("response", resp.Choices[0].Content))
+	} else {
+		logger.Error("no model response")
 	}
 }
