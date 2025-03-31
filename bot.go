@@ -303,8 +303,8 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(resp.Choices) > 0 {
-		logger.Info("model response", slog.String("response", resp.Choices[0].Content))
+		logger.Info("openAI response", slog.String("response", resp.Choices[0].Content))
 	} else {
-		logger.Error("no model response")
+		logger.Error("no openAI response")
 	}
 }

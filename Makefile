@@ -21,5 +21,5 @@ firebase:
 	firebase deploy --only hosting
 
 get_token: # generate a valid JWT token for my user
-	go run cmd/gentoken/main.go -apikey AIzaSyASGNK8O7_LhmipjLKhTUJpqObdZ_gm_Fc  -uid 3gtcjEFE8sNKMSqgrKXtTOX2v8V2
+	go run cmd/gentoken/main.go -apikey AIzaSyASGNK8O7_LhmipjLKhTUJpqObdZ_gm_Fc  -uid QaLSNGdrisWSogLaMGhYwIyHQXw2
 
