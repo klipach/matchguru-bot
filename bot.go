@@ -171,37 +171,6 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// test message
-	if strings.TrimSpace(strings.ToUpper(msg.Message)) == "test" {
-		// Set SSE headers for streaming
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-
-		msg := contract.BotResponse{
-			Response: `**hi there**
-		[Team](/team/346)
-		[Player](/player/4237)
-		[League](/league/384)
-		[Fixture](/fixture/19155228)
-		~~strikethrough~~
-		*italic*
-			`,
-		}
-		jsonData, err := json.Marshal(msg)
-		if err != nil {
-			logger.Error("error while encoding response", slog.String(ErrorMsgLogField, err.Error()))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		sseData := fmt.Sprintf("data: %s\n\n", jsonData)
-		if _, err := w.Write([]byte(sseData)); err != nil {
-			logger.Error("error while encoding response", slog.String(ErrorMsgLogField, err.Error()))
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		return
-	}
 	loc, err := time.LoadLocation(msg.Timezone)
 	if err != nil {
 		logger.Error("error while loading location", slog.String(ErrorMsgLogField, err.Error()))
