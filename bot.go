@@ -284,14 +284,21 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := openAIClient.GenerateContent(
+	prompt := string(llms.ChatMessageTypeSystem) + " " + mainPromptStr.String()
+	for _, message := range messages {
+		var parts []string
+		for _, part := range message.Parts {
+			if text, ok := part.(llms.TextContent); ok {
+				parts = append(parts, text.Text)
+			}
+		}
+		prompt += string(message.Role) + " " + strings.Join(parts, "") + "\n"
+	}
+	prompt += string(llms.ChatMessageTypeHuman) + " " + msg.Message + "\n"
+
+	resp, err := openAIClient.Call(
 		ctx,
-		append(
-			[]llms.MessageContent{
-				llms.TextParts(llms.ChatMessageTypeSystem, mainPromptStr.String()),
-			},
-			messages...,
-		),
+		prompt,
 		llms.WithStreamingFunc(SetupStreamingFunction(w, flusher)),
 		llms.WithMaxTokens(1000),
 	)
@@ -302,8 +309,8 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(resp.Choices) > 0 {
-		logger.Info("openAI response", slog.String("response", resp.Choices[0].Content))
+	if resp != "" {
+		logger.Info("openAI response", slog.String("response", resp))
 	} else {
 		logger.Error("no openAI response")
 	}
