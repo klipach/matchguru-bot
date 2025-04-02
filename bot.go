@@ -20,6 +20,7 @@ import (
 	"github.com/klipach/matchguru/chat"
 	"github.com/klipach/matchguru/contract"
 	"github.com/klipach/matchguru/fixture"
+	"github.com/klipach/matchguru/filter"
 	"github.com/klipach/matchguru/log"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -44,7 +45,7 @@ type modifyingRoundTripper struct {
 }
 
 func SetupStreamingFunction(w io.Writer, flusher http.Flusher) func(ctx context.Context, chunk []byte) error {
-	mf := &ExternalLinkFilter{} // Persistent buffer per stream
+	mf := &filter.ExternalLinkFilter{} // Persistent buffer per stream
 
 	return func(ctx context.Context, chunk []byte) error {
 		// Process incoming chunk

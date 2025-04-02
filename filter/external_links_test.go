@@ -1,4 +1,4 @@
-package matchguru
+package filter
 
 import (
 	"testing"
