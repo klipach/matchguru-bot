@@ -44,7 +44,7 @@ type modifyingRoundTripper struct {
 }
 
 func SetupStreamingFunction(w io.Writer, flusher http.Flusher) func(ctx context.Context, chunk []byte) error {
-	mf := &MarkdownLinkFilter{} // Persistent buffer per stream
+	mf := &ExternalLinkFilter{} // Persistent buffer per stream
 
 	return func(ctx context.Context, chunk []byte) error {
 		// Process incoming chunk

@@ -6,52 +6,52 @@ import (
 )
 
 var (
-	markdownLinkRegex = regexp.MustCompile(`\(?\[[^\]]*\]\([^)]*\)\)?`)
+	externalLinkRegex = regexp.MustCompile(`\(?\[[^\]]*\]\([^)]*\)\)?`)
 )
 
-type MarkdownLinkFilter struct {
+type ExternalLinkFilter struct {
 	buffer    string
 	buffering bool
 }
 
-func (mf *MarkdownLinkFilter) ProcessChunk(chunk string) string {
+func (ef *ExternalLinkFilter) ProcessChunk(chunk string) string {
 	if chunk == "" { // empty chunk - end of stream
-		mf.buffering = false
-		ret := mf.buffer
-		mf.buffer = ""
+		ef.buffering = false
+		ret := ef.buffer
+		ef.buffer = ""
 		return ret
 	}
-	if markdownLinkRegex.MatchString(chunk) { // if chunk is a link, remove it and return the chunk
-		mf.buffering = false
-		ret := mf.buffer + chunk
-		mf.buffer = ""
-		return markdownLinkRegex.ReplaceAllString(ret, "")
+	if externalLinkRegex.MatchString(chunk) { // if chunk is a link, remove it and return the chunk
+		ef.buffering = false
+		ret := ef.buffer + chunk
+		ef.buffer = ""
+		return externalLinkRegex.ReplaceAllString(ret, "")
 	}
 	if strings.Contains(chunk, "[") {
-		if mf.buffering { // if we are in buffering state and see second [, flush buffer and start to buffer again
-			ret := mf.buffer
-			mf.buffer = chunk
+		if ef.buffering { // if we are in buffering state and see second [, flush buffer and start to buffer again
+			ret := ef.buffer
+			ef.buffer = chunk
 			return ret
 		}
-		mf.buffering = true
-		mf.buffer += chunk
+		ef.buffering = true
+		ef.buffer += chunk
 		return ""
 	}
 	if strings.Contains(chunk, "]") && !strings.Contains(chunk, "](") { // not a link, stop buffering
-		mf.buffering = false
-		ret := mf.buffer
-		mf.buffer = ""
+		ef.buffering = false
+		ret := ef.buffer
+		ef.buffer = ""
 		return ret + chunk
 	}
-	if strings.Contains(chunk, ")") && mf.buffering { // potential link, trying to remove
-		ret := mf.buffer + chunk
-		ret = markdownLinkRegex.ReplaceAllString(ret, "")
-		mf.buffering = false
-		mf.buffer = ""
+	if strings.Contains(chunk, ")") && ef.buffering { // potential link, trying to remove
+		ret := ef.buffer + chunk
+		ret = externalLinkRegex.ReplaceAllString(ret, "")
+		ef.buffering = false
+		ef.buffer = ""
 		return ret
 	}
-	if mf.buffering { // if in buffering state, means there was a [ symbol
-		mf.buffer += chunk
+	if ef.buffering { // if in buffering state, means there was a [ symbol
+		ef.buffer += chunk
 		return ""
 	}
 	return chunk
