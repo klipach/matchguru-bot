@@ -122,7 +122,7 @@ func TestMarkdownLinkFilter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filter := &MarkdownLinkFilter{}
+			filter := &ExternalLinkFilter{}
 			var result []string
 			for _, chunk := range tt.chunks {
 				result = append(result, filter.ProcessChunk(chunk))
