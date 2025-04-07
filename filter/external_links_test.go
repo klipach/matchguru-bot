@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -125,7 +126,7 @@ func TestMarkdownLinkFilter(t *testing.T) {
 			filter := &ExternalLinkFilter{}
 			var result []string
 			for _, chunk := range tt.chunks {
-				result = append(result, filter.ProcessChunk(chunk))
+				result = append(result, filter.ProcessChunk(context.Background(), chunk))
 			}
 			assert.Equal(t, tt.expected, result)
 		})

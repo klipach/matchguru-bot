@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"context"
 	"regexp"
 	"strings"
 )
@@ -14,12 +15,12 @@ type ExternalLinkFilter struct {
 	buffering bool
 }
 
-func (ef *ExternalLinkFilter) ProcessChunk(chunk string) string {
+func (ef *ExternalLinkFilter) ProcessChunk(_ context.Context, chunk string) string {
 	if chunk == "" { // empty chunk - end of stream
 		ef.buffering = false
 		ret := ef.buffer
 		ef.buffer = ""
-		return ret
+		return externalLinkRegex.ReplaceAllString(ret, "")
 	}
 	if externalLinkRegex.MatchString(chunk) { // if chunk is a link, remove it and return the chunk
 		ef.buffering = false
@@ -50,7 +51,7 @@ func (ef *ExternalLinkFilter) ProcessChunk(chunk string) string {
 		ef.buffer = ""
 		return ret
 	}
-	if ef.buffering { // if in buffering state, means there was a [ symbol
+	if ef.buffering { // in buffering state, means there was a [ symbol
 		ef.buffer += chunk
 		return ""
 	}

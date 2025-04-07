@@ -19,8 +19,8 @@ import (
 	"github.com/klipach/matchguru/auth"
 	"github.com/klipach/matchguru/chat"
 	"github.com/klipach/matchguru/contract"
-	"github.com/klipach/matchguru/fixture"
 	"github.com/klipach/matchguru/filter"
+	"github.com/klipach/matchguru/fixture"
 	"github.com/klipach/matchguru/log"
 	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -30,6 +30,10 @@ const (
 	ErrorMsgLogField = "errorMsg"
 	promptLogField   = "prompt"
 	bodyLogField     = "body"
+	userIDLogField   = "userID"
+	chatIDLogField   = "chatID"
+	gameIDLogField   = "gameID"
+	timezaneLogField = "timezone"
 
 	gcloudFuncSourceDir = "serverless_function_source_code"
 	openAIModel         = "gpt-4o-search-preview"
@@ -39,17 +43,24 @@ var (
 	openaiAPIKey = os.Getenv("OPENAI_API_KEY")
 )
 
-// ModifyingRoundTripper removes the "temperature" field and adds "web_search_options".
+// modifyingRoundTripper removes the "temperature" field and adds "web_search_options"
 type modifyingRoundTripper struct {
 	rt http.RoundTripper
 }
 
 func SetupStreamingFunction(w io.Writer, flusher http.Flusher) func(ctx context.Context, chunk []byte) error {
-	mf := &filter.ExternalLinkFilter{} // Persistent buffer per stream
+	// persistent buffer per SetupStreamingFunction
+	ilf := &filter.InternalLinkFilter{}
+	elf := &filter.ExternalLinkFilter{}
 
 	return func(ctx context.Context, chunk []byte) error {
-		// Process incoming chunk
-		cleanedChunk := mf.ProcessChunk(string(chunk))
+		cleanedChunk := ilf.ProcessChunk(
+			ctx,
+			elf.ProcessChunk(
+				ctx,
+				string(chunk),
+			),
+		)
 		if cleanedChunk == "" {
 			return nil
 		}
@@ -68,56 +79,53 @@ func SetupStreamingFunction(w io.Writer, flusher http.Flusher) func(ctx context.
 }
 
 func (mrt *modifyingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Read the initial request body.
 	var bodyBytes []byte
 	if req.Body != nil {
 		bodyBytes, _ = io.ReadAll(req.Body)
 	}
 
-	// Attempt to modify JSON.
+	// attempt to modify JSON
 	var modifiedBody []byte
 	var jsonData map[string]any
 	if err := json.Unmarshal(bodyBytes, &jsonData); err == nil {
-		// Remove the "temperature" key.
+		// remove the "temperature" key, as "web_search_options" option does not support it
 		delete(jsonData, "temperature")
-		// Add "web_search_options" field with an empty object.
+		// add "web_search_options" field with an empty object
 		jsonData["web_search_options"] = map[string]any{}
 		if mBody, err := json.Marshal(jsonData); err == nil {
 			modifiedBody = mBody
 		} else {
-			// If marshalling fails, fallback to the original body.
+			// if marshalling fails, fallback to the original body
 			modifiedBody = bodyBytes
 		}
 	} else {
-		// Not valid JSON, so fallback.
+		// not valid JSON, so fallback.
 		modifiedBody = bodyBytes
 	}
 
-	// Reset req.Body so it can be read by downstream clients.
+	// reset req.Body so it can be read by downstream clients
 	req.Body = io.NopCloser(bytes.NewBuffer(modifiedBody))
-	// Update ContentLength accordingly.
 	req.ContentLength = int64(len(modifiedBody))
 	req.Header.Set("Content-Length", strconv.Itoa(len(modifiedBody)))
 
 	return mrt.rt.RoundTrip(req)
 }
 
-// LoggingRoundTripper logs the outgoing request details.
+// LoggingRoundTripper logs the outgoing request details
 type loggingRoundTripper struct {
-	rt     http.RoundTripper
-	logger *slog.Logger
+	rt http.RoundTripper
 }
 
 func (lrt *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Read the current request body.
+	logger := log.LoggerFromContext(req.Context())
 	var bodyBytes []byte
 	if req.Body != nil {
 		bodyBytes, _ = io.ReadAll(req.Body)
 	}
-	// Reset req.Body so it can be read downstream.
+	// reset req.Body so it can be read downstream
 	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-	lrt.logger.Info("Outgoing openAI request",
+	logger.Info("openAI request",
 		slog.String("url", req.URL.String()),
 		slog.String(bodyLogField, string(bodyBytes)),
 	)
@@ -140,8 +148,7 @@ func fixDir() {
 
 func Bot(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	logger := log.New()
-
+	logger := log.LoggerFromContext(ctx)
 	logger.Info("bot function called")
 
 	if r.Method != http.MethodPost {
@@ -156,6 +163,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	logger = logger.With(slog.String(userIDLogField, token.UID))
 
 	var msg contract.BotRequest
 	data, err := io.ReadAll(r.Body)
@@ -164,13 +172,19 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	logger.Info("incoming reques", slog.String(bodyLogField, string(data)))
+	logger.Info("incoming request", slog.String(bodyLogField, string(data)))
 
 	if err := json.Unmarshal(data, &msg); err != nil {
 		logger.Error("error while decoding request", slog.String(ErrorMsgLogField, err.Error()))
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
+	logger = logger.With(
+		slog.Int(chatIDLogField, msg.ChatID),
+		slog.Int(gameIDLogField, msg.GameID),
+		slog.String(timezaneLogField, msg.Timezone),
+	)
+	ctx = log.WithLogger(ctx, logger)
 
 	loc, err := time.LoadLocation(msg.Timezone)
 	if err != nil {
@@ -185,7 +199,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			logger.Error("error while fetching fixture", slog.String(ErrorMsgLogField, err.Error()))
 		} else {
 			f.StartingAt = f.StartingAt.In(loc)
-			logger.Info(fmt.Sprintf("fixture fetched %v+", f))
+			logger.Info("fixture fetched", slog.Any("fixture", f))
 		}
 	}
 
@@ -196,7 +210,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// append user message to the messages history
+	// append user message at the end of the messages history
 	messages = append(messages, llms.TextParts(llms.ChatMessageTypeHuman, msg.Message))
 
 	openAIClient, err := openai.New(
@@ -206,8 +220,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 			&http.Client{
 				Transport: &modifyingRoundTripper{
 					rt: &loggingRoundTripper{
-						rt:     http.DefaultTransport,
-						logger: logger,
+						rt: http.DefaultTransport,
 					},
 				},
 			},
@@ -243,7 +256,7 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set SSE headers for streaming
+	// set SSE headers for streaming
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
