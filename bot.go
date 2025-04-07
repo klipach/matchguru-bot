@@ -190,8 +190,8 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Error("error while loading location", slog.String(ErrorMsgLogField, err.Error()))
 	}
-	userNow := time.Now().In(loc).Format(time.RFC1123Z)
-
+	userLocalTime := time.Now().In(loc).Format(time.RFC1123Z)
+	userOffset := time.Now().In(loc).Format("-07:00")
 	f := &fixture.Fixture{}
 	if msg.GameID != 0 {
 		f, err = fixture.Fetch(ctx, msg.GameID)
@@ -243,11 +243,13 @@ func Bot(w http.ResponseWriter, r *http.Request) {
 	err = mainPrompt.Execute(
 		&mainPromptStr,
 		struct {
-			UserNow string
-			Fixture *fixture.Fixture
+			UserLocalTime string
+			UserOffset    string
+			Fixture       *fixture.Fixture
 		}{
-			UserNow: userNow,
-			Fixture: f,
+			UserLocalTime: userLocalTime,
+			UserOffset:    userOffset,
+			Fixture:       f,
 		},
 	)
 	if err != nil {
