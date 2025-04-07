@@ -8,8 +8,12 @@ import (
 	"time"
 )
 
+type ctxKey struct{}
+
 // CloudLoggingHandler is a slog.Handler implementation for Google Cloud Functions.
-type CloudLoggingHandler struct{}
+type CloudLoggingHandler struct {
+	attrs []slog.Attr
+}
 
 // NewCloudLoggingHandler creates a new handler that writes logs in Google Cloud structured format.
 func NewCloudLoggingHandler() *CloudLoggingHandler {
@@ -22,7 +26,7 @@ func (h *CloudLoggingHandler) Handle(ctx context.Context, r slog.Record) error {
 	traceID := getTraceID(ctx)
 
 	// Prepare log entry in Google Cloud structured logging format
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"severity": r.Level.String(),
 		"time":     time.Now().Format(time.RFC3339),
 		"message":  r.Message,
@@ -33,7 +37,12 @@ func (h *CloudLoggingHandler) Handle(ctx context.Context, r slog.Record) error {
 		entry["logging.googleapis.com/trace"] = traceID
 	}
 
-	// Add attributes
+	// Add handler attributes first
+	for _, attr := range h.attrs {
+		entry[attr.Key] = attr.Value.Any()
+	}
+
+	// Add record attributes
 	r.Attrs(func(attr slog.Attr) bool {
 		entry[attr.Key] = attr.Value.Any()
 		return true
@@ -56,7 +65,10 @@ func (h *CloudLoggingHandler) Enabled(_ context.Context, _ slog.Level) bool {
 
 // WithAttrs returns a new handler with additional attributes.
 func (h *CloudLoggingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return h
+	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
+	copy(newAttrs, h.attrs)
+	copy(newAttrs[len(h.attrs):], attrs)
+	return &CloudLoggingHandler{attrs: newAttrs}
 }
 
 // WithGroup returns the same handler, as grouping is not implemented.
@@ -73,6 +85,13 @@ func getTraceID(ctx context.Context) string {
 	return traceID
 }
 
-func New() *slog.Logger {
-    return slog.New(NewCloudLoggingHandler())
+func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, ctxKey{}, logger)
+}
+
+func LoggerFromContext(ctx context.Context) *slog.Logger {
+	if logger, ok := ctx.Value(ctxKey{}).(*slog.Logger); ok {
+		return logger
+	}
+	return slog.New(NewCloudLoggingHandler())
 }

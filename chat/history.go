@@ -33,7 +33,7 @@ type firestoreChat struct {
 }
 
 func LoadHistory(ctx context.Context, userID string, chatID int) ([]llms.MessageContent, error) {
-	logger := log.New()
+	logger := log.LoggerFromContext(ctx)
 
 	var chatHistory []llms.MessageContent
 
