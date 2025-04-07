@@ -11,3 +11,20 @@ Content-Type: application/json
     "chat_id": 10,
     "game_id": null
 }
+
+
+### Bot test
+POST http://localhost:8080/bot
+Content-Type: application/json
+
+{
+    "message": "hi",
+    "timezone":"Europe/Berlin",
+    "chat_id": 10,
+    "game_id": null
+}
+
+### Get all leagues
+GET https://api.sportmonks.com/v3/football/leagues?include=country:name&per_page=100&page1
+Content-Type: application/json
+Authorization: E5fp0YupbTOX0Y8HyHLCvLZ0guAzQGndg8Ftpcm1h8gxKvrj18jGKnvcR98K
