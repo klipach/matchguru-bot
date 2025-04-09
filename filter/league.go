@@ -6,7 +6,9 @@ var leagueNameToID = map[string]int{ // league name should be in lowercase
 	"championship":                 9,
 	"fa cup":                       24,
 	"carabao cup":                  27,
+	"dutch eredivisie":             72,
 	"eredivisie":                   72,
+	"german bundesliga":            82,
 	"bundesliga":                   82,
 	"austrian bundesliga":          181,
 	"austrian football bundesliga": 181,
@@ -26,6 +28,7 @@ var leagueNameToID = map[string]int{ // league name should be in lowercase
 	"portuguese primeira liga":     462,
 	"liga portugal":                462,
 	"premier league":               486,
+	"scottish premiership":         501,
 	"premiership":                  501,
 	"spanish la liga":              564,
 	"la liga 2":                    567,
@@ -37,4 +40,5 @@ var leagueNameToID = map[string]int{ // league name should be in lowercase
 	"super lig":                    600,
 	"ukraine premier league":       609,
 	"uefa europa league play-offs": 1371,
+	"russian premier league":       0, // no such country
 }
