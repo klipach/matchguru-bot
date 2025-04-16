@@ -42,7 +42,6 @@ func TestFindChatMessages(t *testing.T) {
 			chatID:   1,
 			expected: nil,
 		},
-
 	}
 
 	for _, test := range tests {
