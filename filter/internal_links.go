@@ -69,17 +69,21 @@ func convertInternalLinks(ctx context.Context, text string) string {
 			return ""
 		}
 
-		leagueName := parts[0]
-		leagueNameInEnglish := parts[1]
-		if leagueID, ok := leagueNameToID[strings.ToLower(leagueNameInEnglish)]; ok {
+		linkTitle := parts[0]
+		linkTitleInEnglish := parts[1]
+
+		if leagueID, ok := leagueNameToID[strings.ToLower(linkTitleInEnglish)]; ok {
 			if leagueID == 0 { // league found but no mapping yet
-				return leagueName
+				return linkTitle
 			}
-			return "[" + leagueName + "](leagues/" + strconv.Itoa(leagueID) + ")"
+			return "[" + linkTitle + "](leagues/" + strconv.Itoa(leagueID) + ")"
+		}
+		if teamID, ok := teamNameToID[strings.ToLower(linkTitleInEnglish)]; ok {
+			return "[" + linkTitle + "](teams/" + strconv.Itoa(teamID) + ")"
 		}
 
-		// if league not found, just return the content without braces
-		logger.Info("league mapping not found", slog.String("leagueName", strings.ToLower(leagueNameInEnglish)))
-		return leagueName
+		// if link mapping not found, just return the content without braces
+		logger.Info("link mapping not found", slog.String("linkTitle", strings.ToLower(linkTitleInEnglish)))
+		return linkTitle
 	})
 }

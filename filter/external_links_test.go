@@ -119,6 +119,21 @@ func TestMarkdownLinkFilter(t *testing.T) {
 				"",
 			},
 		},
+		{
+			name: "link wrapped in brackets",
+			chunks: []string{
+				"**hi there**, ",
+				"([no links here](https://example.com)), ",
+				"and here",
+				"",
+			},
+			expected: []string{
+				"**hi there**, ",
+				", ",
+				"and here",
+				"",
+			},
+		},
 	}
 
 	for _, tt := range tests {

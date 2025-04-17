@@ -29,6 +29,7 @@ var leagueNameToID = map[string]int{ // league name should be in lowercase
 	"eliteserien":                          444,
 	"polish ekstraklasa":                   453,
 	"ekstraklasa":                          453,
+	"liga portugal betclic":                462,
 	"primeira liga":                        462,
 	"portuguese primeira liga":             462,
 	"liga portugal":                        462,
