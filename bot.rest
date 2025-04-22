@@ -2,11 +2,11 @@
 
 ### Bot test
 POST https://us-central1-match-guru-0iqc9r.cloudfunctions.net/bot
-Authorization: Bearer ...
+Authorization: Bearer {{jwtToken}}
 Content-Type: application/json
 
 {
-    "message": "hi",
+    "message": "list all eu leagues",
     "timezone":"Europe/Berlin",
     "chat_id": 10,
     "game_id": null
@@ -26,5 +26,10 @@ Content-Type: application/json
 
 ### Get all leagues
 GET https://api.sportmonks.com/v3/football/leagues?include=country:name&per_page=100&page1
+Content-Type: application/json
+Authorization: E5fp0YupbTOX0Y8HyHLCvLZ0guAzQGndg8Ftpcm1h8gxKvrj18jGKnvcR98K
+
+### get all teams
+GET https://api.sportmonks.com/v3/football/teams?&per_page=50&page=1
 Content-Type: application/json
 Authorization: E5fp0YupbTOX0Y8HyHLCvLZ0guAzQGndg8Ftpcm1h8gxKvrj18jGKnvcR98K

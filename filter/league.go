@@ -2,6 +2,7 @@ package filter
 
 // source https://api.sportmonks.com/v3/football/leagues?include=country:name&per_page=100
 var leagueNameToID = map[string]int{ // league name should be in lowercase
+	"premier league":                       8,
 	"english premier league":               8,
 	"english football league championship": 9,
 	"english championship":                 9,
@@ -33,7 +34,6 @@ var leagueNameToID = map[string]int{ // league name should be in lowercase
 	"primeira liga":                        462,
 	"portuguese primeira liga":             462,
 	"liga portugal":                        462,
-	"premier league":                       486,
 	"scottish premiership":                 501,
 	"premiership":                          501,
 	"spanish la liga":                      564,
@@ -47,5 +47,5 @@ var leagueNameToID = map[string]int{ // league name should be in lowercase
 	"ukrainian premier league":             609,
 	"ukraine premier league":               609,
 	"uefa europa league play-offs":         1371,
-	"russian premier league":               0, // no such country
+	"russian premier league":               0, // 486 no such country
 }
