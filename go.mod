@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	cloud.google.com/go/compute/metadata v0.8.4
-	cloud.google.com/go/firestore v1.18.0
+	cloud.google.com/go/firestore v1.19.0
 	firebase.google.com/go v3.13.0+incompatible
 	firebase.google.com/go/v4 v4.18.0
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.2
