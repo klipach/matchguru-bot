@@ -5,7 +5,7 @@ deploy:
 	gcloud functions deploy $(FUNCTION_NAME) \
 	--gen2 \
 	--region=us-central1 \
-	--runtime=go123 \
+	--runtime=go125 \
 	--trigger-http \
 	--project=$(PROJECT_ID) \
 	--allow-unauthenticated \
