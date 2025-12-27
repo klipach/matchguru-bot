@@ -30,6 +30,11 @@ Content-Type: application/json
 Authorization: E5fp0YupbTOX0Y8HyHLCvLZ0guAzQGndg8Ftpcm1h8gxKvrj18jGKnvcR98K
 
 ### get all teams
-GET https://api.sportmonks.com/v3/football/teams?&per_page=50&page=1
+GET https://api.sportmonks.com/v3/football/teams?
+Content-Type: application/json
+Authorization: E5fp0YupbTOX0Y8HyHLCvLZ0guAzQGndg8Ftpcm1h8gxKvrj18jGKnvcR98K
+
+### search team
+ GET https://api.sportmonks.com/v3/football/teams/search/van bb?per_page=100&page1
 Content-Type: application/json
 Authorization: E5fp0YupbTOX0Y8HyHLCvLZ0guAzQGndg8Ftpcm1h8gxKvrj18jGKnvcR98K

@@ -1,6 +1,9 @@
 package filter
 
 var teamNameToID = map[string]int{
+	"van bb":                         13848,
+	"alverca":                        35867,
+	"braga":                          884,
 	"hull city":                      22,
 	"crewe alexandra":                87,
 	"peña deportiva":                 15705,
