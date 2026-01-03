@@ -28,7 +28,6 @@ import (
 
 const (
 	ErrorMsgLogField = "errorMsg"
-	promptLogField   = "prompt"
 	bodyLogField     = "body"
 	userIDLogField   = "userID"
 	chatIDLogField   = "chatID"
