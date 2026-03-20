@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 go test -v -coverprofile=coverage.out ./...
 
 # Run a single test
-go test -v ./auth/ -run TestBearerToken
+go test -v ./auth/ -run TestParseBearerToken
 
 # Lint
 go vet ./...
@@ -21,7 +21,8 @@ go tool cover -func=coverage.out
 make deploy
 
 # Generate a Firebase JWT token for testing
-go run ./cmd/gentoken/main.go
+# Requires a Firebase service account key at ./service_account_key.json
+go run ./cmd/gentoken/main.go -uid TEST_USER_ID -apikey YOUR_FIREBASE_API_KEY
 ```
 
 ## Architecture
@@ -35,7 +36,7 @@ HTTP POST → Firebase JWT auth → parse BotRequest
   → load chat history (Firestore)
   → fetch fixture data (SportMonks API, if gameID provided)
   → render system prompt template (prompts/main.tmpl)
-  → call OpenAI GPT-4o with streaming
+  → call OpenAI gpt-4o-mini-search-preview with streaming
   → pipe chunks through filters (external links, internal links)
   → stream response via SSE
 ```
@@ -54,7 +55,7 @@ HTTP POST → Firebase JWT auth → parse BotRequest
 
 ### Key External Dependencies
 
-- `github.com/tmc/langchaingo` — LLM framework used to call OpenAI GPT-4o
+- `github.com/tmc/langchaingo` — LLM framework used to call OpenAI `gpt-4o-mini-search-preview`
 - `firebase.google.com/go/v4` + `cloud.google.com/go/firestore` — Auth and chat persistence
 - `github.com/GoogleCloudPlatform/functions-framework-go` — GCP Functions entry point
 - SportMonks REST API — Fixture/team/league data
@@ -63,4 +64,6 @@ HTTP POST → Firebase JWT auth → parse BotRequest
 
 - `OPENAI_API_KEY`
 - `SPORTMONKS_API_KEY`
-- Firebase credentials provided via `service_account_key.json` (GCP) or `FIREBASE_AUTH_EMULATOR_HOST` / ADC locally
+- Firebase credentials:
+  - In GCP: provided via Application Default Credentials (default service account) — no `service_account_key.json` needed
+  - Locally/dev tools (e.g. `cmd/gentoken`): via `service_account_key.json` or `FIREBASE_AUTH_EMULATOR_HOST`
