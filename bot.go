@@ -35,7 +35,7 @@ const (
 	timezaneLogField = "timezone"
 
 	gcloudFuncSourceDir = "serverless_function_source_code"
-	openAIModel         = "gpt-4o-search-preview"
+	openAIModel         = "gpt-4o-mini-search-preview"
 )
 
 var (
