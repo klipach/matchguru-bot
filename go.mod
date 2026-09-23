@@ -10,7 +10,7 @@ require (
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.2
 	github.com/stretchr/testify v1.12.1
 	github.com/tmc/langchaingo v0.1.14
-	google.golang.org/api v0.297.0
+	google.golang.org/api v0.298.0
 )
 
 require (
