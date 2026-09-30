@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	cloud.google.com/go/compute/metadata v0.10.0
-	cloud.google.com/go/firestore v1.25.0
+	cloud.google.com/go/firestore v1.26.0
 	firebase.google.com/go v3.13.0+incompatible
 	firebase.google.com/go/v4 v4.22.0
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.2
