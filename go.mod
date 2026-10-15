@@ -9,7 +9,7 @@ require (
 	firebase.google.com/go/v4 v4.22.0
 	github.com/GoogleCloudPlatform/functions-framework-go v1.9.2
 	github.com/stretchr/testify v1.12.1
-	github.com/tmc/langchaingo v0.1.14
+	github.com/tmc/langchaingo v0.1.15
 	google.golang.org/api v0.300.0
 )
 
